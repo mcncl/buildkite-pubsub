@@ -239,23 +239,6 @@ Common issues and solutions:
    - Verify service account permissions
    - Check resource constraints
 
-## Advanced Topics
-
-1. **Custom Event Processing**
-   - Event transformation/enrichment
-   - Complex routing logic
-   - Custom retry policies
-
-2. **Compliance & Audit**
-   - Event logging strategies
-   - Audit trail maintenance
-   - Data retention policies
-
-3. **High Availability**
-   - Multi-region setup
-   - Failover strategies
-   - Disaster recovery
-
 For more examples and detailed documentation, check out:
 - [Cloud Functions Examples](https://github.com/GoogleCloudPlatform/python-docs-samples/tree/main/functions)
 - [Pub/Sub Documentation](https://cloud.google.com/pubsub/docs)
