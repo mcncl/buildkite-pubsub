@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Generate self-signed certificate for testing
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout webhook-tls.key \
+  -out webhook-tls.crt \
+  -subj "/CN=webhook.local/O=BuildkiteWebhook" \
+  -addext "subjectAltName = DNS:webhook.local"
+
+# Create kubernetes secret
+kubectl create namespace buildkite-webhook --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl create secret tls buildkite-webhook-tls \
+  --namespace buildkite-webhook \
+  --key webhook-tls.key \
+  --cert webhook-tls.crt \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Clean up local files
+rm webhook-tls.key webhook-tls.crt

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: buildkite-webhook-config
+data:
+  project_id: "your-project-id"
+  topic_id: "buildkite-events"

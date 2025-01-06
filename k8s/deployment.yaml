@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: buildkite-webhook
+  labels:
+    app: buildkite-webhook
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: buildkite-webhook
+  template:
+    metadata:
+      labels:
+        app: buildkite-webhook
+    spec:
+      containers:
+        - name: webhook
+          image: gcr.io/your-project/buildkite-webhook:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PROJECT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: buildkite-webhook-config
+                  key: project_id
+            - name: TOPIC_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: buildkite-webhook-config
+                  key: topic_id
+            - name: BUILDKITE_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: buildkite-webhook-secret
+                  key: token
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
