@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Default to no dry run
+DRY_RUN=false
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1"
+      exit 1
+      ;;
+  esac
+done
+
+# Function to execute or print commands based on dry run flag
+execute() {
+  if [ "$DRY_RUN" = true ]; then
+    echo "Would execute: $*"
+  else
+    echo "Executing: $*"
+    eval "$*"
+  fi
+}
+
+echo "Starting cleanup..."
+
+# Kill any port-forward processes
+echo "Stopping port forwards..."
+execute "pkill -f 'port-forward' || true"
+
+# Delete Kubernetes resources
+echo "Deleting Kubernetes resources..."
+
+# Delete namespaces and their contents
+execute "kubectl delete namespace buildkite-webhook --ignore-not-found"
+execute "kubectl delete namespace monitoring --ignore-not-found"
+
+# Stop and remove local Docker registry
+echo "Cleaning up Docker resources..."
+execute "docker stop registry || true"
+execute "docker rm registry || true"
+
+# Remove local Docker images
+echo "Removing Docker images..."
+execute "docker rmi localhost:5000/buildkite-webhook:latest || true"
+execute "docker rmi buildkite-webhook:latest || true"
+
+# Optional: Clean up any local files created during setup
+echo "Cleaning up local files..."
+execute "rm -f credentials.json || true"
+execute "rm -f token.b64 || true"
+execute "rm -f project.b64 || true"
+
+echo "Cleanup complete!"

@@ -47,6 +47,7 @@ See our [Quick Start Guide](docs/QUICK_START.md) for a complete setup walkthroug
 ## Documentation
 
 - [Quick Start Guide](docs/QUICK_START.md) - Complete setup walkthrough
+- [Google Cloud Setup Guide](docs/GCP_SETUP.md) - Service account and permissions
 - [Usage Guide](docs/USAGE.md) - Examples and patterns
 
 ## Requirements

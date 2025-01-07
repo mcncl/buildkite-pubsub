@@ -2,8 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: buildkite-webhook
-  labels:
-    app: buildkite-webhook
+  namespace: buildkite-webhook
 spec:
   replicas: 2
   selector:
@@ -16,7 +15,8 @@ spec:
     spec:
       containers:
         - name: webhook
-          image: gcr.io/your-project/buildkite-webhook:latest
+          image: localhost:5000/buildkite-webhook:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
           env:
@@ -33,24 +33,14 @@ spec:
             - name: BUILDKITE_WEBHOOK_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: buildkite-webhook-secret
-                  key: token
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 256Mi
-          readinessProbe:
-            httpGet:
-              path: /ready
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 20
+                  name: buildkite-webhook-secrets
+                  key: buildkite-token
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/secrets/google/credentials.json
+          volumeMounts:
+            - name: google-cloud-key
+              mountPath: /var/secrets/google
+      volumes:
+        - name: google-cloud-key
+          secret:
+            secretName: gcp-credentials
