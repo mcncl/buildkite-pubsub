@@ -1,4 +1,3 @@
-// internal/middleware/security/headers_test.go
 package security
 
 import (

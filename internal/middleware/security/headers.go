@@ -1,4 +1,3 @@
-// internal/middleware/security/headers.go
 package security
 
 import (
