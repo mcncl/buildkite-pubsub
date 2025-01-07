@@ -31,16 +31,16 @@ gcloud iam service-accounts create buildkite-webhook \
 #### Option A: Using Predefined Roles (Recommended for most users)
 
 ```bash
-# Grant Pub/Sub Publisher role
+# For publishing messages only
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/pubsub.publisher"
 
-# Optional: Grant topic creation permissions
+# Optional: For full Pub/Sub management (including topic creation)
 # Only needed if you want the service to create topics automatically
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com" \
-    --role="roles/pubsub.topics.create"
+    --role="roles/pubsub.admin"
 ```
 
 #### Option B: Using Custom Role (More restrictive)
