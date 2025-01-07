@@ -48,8 +48,6 @@ See our [Quick Start Guide](docs/QUICK_START.md) for a complete setup walkthroug
 
 - [Quick Start Guide](docs/QUICK_START.md) - Complete setup walkthrough
 - [Usage Guide](docs/USAGE.md) - Examples and patterns
-- [Architecture](docs/ARCHITECTURE.md) - System design and components
-- [Contributing](CONTRIBUTING.md) - Development guidelines
 
 ## Requirements
 
