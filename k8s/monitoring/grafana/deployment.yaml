@@ -18,16 +18,32 @@ spec:
           image: grafana/grafana:10.0.3
           ports:
             - containerPort: 3000
+              name: http-grafana
+              protocol: TCP
           env:
             - name: GF_SECURITY_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: grafana-secrets
+                  name: grafana-admin
                   key: admin-password
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
           volumeMounts:
             - name: dashboards
               mountPath: /var/lib/grafana/dashboards
+            - name: dashboards-config
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: datasources-config
+              mountPath: /etc/grafana/provisioning/datasources
       volumes:
         - name: dashboards
           configMap:
             name: grafana-dashboards
+        - name: dashboards-config
+          configMap:
+            name: grafana-dashboards-config
+        - name: datasources-config
+          configMap:
+            name: grafana-datasources-config
