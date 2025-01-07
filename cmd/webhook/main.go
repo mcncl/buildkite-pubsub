@@ -10,7 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mcncl/buildkite-pubsub/internal/middleware"
+	"github.com/mcncl/buildkite-pubsub/internal/middleware/logging"
+	"github.com/mcncl/buildkite-pubsub/internal/middleware/request"
+	"github.com/mcncl/buildkite-pubsub/internal/middleware/security"
 	"github.com/mcncl/buildkite-pubsub/internal/publisher"
 	"github.com/mcncl/buildkite-pubsub/pkg/webhook"
 )
@@ -44,17 +46,17 @@ func main() {
 	mux.HandleFunc("/health", healthCheck.HealthHandler)
 	mux.HandleFunc("/ready", healthCheck.ReadyHandler)
 
-	securityConfig := middleware.DefaultSecurityConfig()
+	securityConfig := security.DefaultConfig()
 
 	// Add webhook route with middleware
 	mux.Handle("/webhook", chainMiddleware(
 		webhookHandler,
-		middleware.WithRequestID,
-		middleware.WithRequestTimeout(30*time.Second),
-		middleware.WithSecurity(securityConfig),
-		middleware.WithRateLimit(60),
-		middleware.WithPerIPRateLimit(30),
-		middleware.WithLogging,
+		request.WithRequestID,
+		request.WithTimeout(30*time.Second),
+		security.WithSecurityHeaders(securityConfig),
+		security.WithRateLimit(60),
+		security.WithIPRateLimit(30),
+		logging.WithLogging,
 	))
 
 	// Configure server
