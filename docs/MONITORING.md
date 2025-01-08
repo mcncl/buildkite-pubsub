@@ -2,264 +2,85 @@
 
 This guide covers monitoring, metrics, and alerting for the Buildkite PubSub Webhook service.
 
+## Setup Options
+
+### Option 1: UI-Based Setup (Recommended for Development)
+
+1. Deploy the monitoring stack:
+```bash
+# Deploy Prometheus
+kubectl apply -f k8s/monitoring/prometheus/configmap.yaml
+kubectl apply -f k8s/monitoring/prometheus/deployment.yaml
+kubectl apply -f k8s/monitoring/prometheus/service.yaml
+
+# Deploy Grafana
+kubectl apply -f k8s/monitoring/grafana/secret.yaml
+kubectl apply -f k8s/monitoring/grafana/deployment.yaml
+kubectl apply -f k8s/monitoring/grafana/service.yaml
+```
+
+2. Access Grafana:
+```bash
+kubectl port-forward -n monitoring svc/grafana 3000:3000
+```
+
+3. Create the dashboard:
+   - Log into Grafana (default credentials: admin/admin)
+   - Go to Dashboards → New Dashboard
+   - Add these panels:
+
+     **Webhook Events by Type**
+     ```promql
+     sum(buildkite_webhook_request_duration_seconds_count) by (event_type)
+     ```
+
+     **Request Duration by Event Type**
+     ```promql
+     rate(buildkite_webhook_request_duration_seconds_sum[5m]) / rate(buildkite_webhook_request_duration_seconds_count[5m])
+     ```
+
+### Option 2: ConfigMap-Based Setup (For Production/GitOps)
+
+⚠️ **Note:** This approach requires additional setup and careful ordering of resources. Consider using a Grafana Operator or similar tool for production environments.
+
+If you need to use ConfigMaps for dashboard provisioning, please refer to the [Grafana Provisioning Documentation](https://grafana.com/docs/grafana/latest/administration/provisioning/) or consider using the [Grafana Operator](https://github.com/grafana-operator/grafana-operator).
+
 ## Available Metrics
 
-### Webhook Metrics
-
 | Metric | Type | Description | Labels |
 |--------|------|-------------|---------|
-| `buildkite_webhook_requests_total` | Counter | Total number of webhook requests | `status`, `event_type` |
 | `buildkite_webhook_request_duration_seconds` | Histogram | Request processing time | `event_type` |
+| `buildkite_webhook_requests_total` | Counter | Total number of webhook requests | `status`, `event_type` |
 | `buildkite_webhook_auth_failures_total` | Counter | Authentication failures | - |
-
-### Pub/Sub Metrics
-
-| Metric | Type | Description | Labels |
-|--------|------|-------------|---------|
 | `buildkite_pubsub_publish_requests_total` | Counter | Pub/Sub publish attempts | `status` |
 | `buildkite_pubsub_publish_duration_seconds` | Histogram | Pub/Sub publish latency | - |
 
-### System Metrics
+## Verifying Metrics
 
-| Metric | Type | Description | Labels |
-|--------|------|-------------|---------|
-| `buildkite_errors_total` | Counter | Error count by type | `type` |
-| `buildkite_rate_limit_exceeded_total` | Counter | Rate limit triggers | `type` |
-
-## Grafana Dashboards
-
-### Overview Dashboard
-
-Main service health dashboard showing:
-- Request rates and latencies
-- Error rates
-- Authentication failures
-- Pub/Sub publish success rate
-
-```yaml
-# k8s/monitoring/grafana/dashboards/overview.json
-{
-  "panels": [
-    {
-      "title": "Webhook Request Rate",
-      "type": "timeseries",
-      "datasource": "prometheus",
-      "targets": [
-        {
-          "expr": "rate(buildkite_webhook_requests_total[5m])",
-          "legendFormat": "{{status}}"
-        }
-      ]
-    },
-    {
-      "title": "Request Latency (p95)",
-      "type": "gauge",
-      "datasource": "prometheus",
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.95, rate(buildkite_webhook_request_duration_seconds_bucket[5m]))"
-        }
-      ]
-    }
-  ]
-}
+1. Check Prometheus metrics endpoint:
+```bash
+kubectl port-forward -n buildkite-webhook svc/buildkite-webhook 8080:80
+curl http://localhost:8080/metrics
 ```
 
-### Operational Dashboard
-
-Detailed operational metrics showing:
-- Rate limiting
-- Resource usage
-- Pub/Sub performance
-- Detailed error breakdown
-
-```yaml
-# k8s/monitoring/grafana/dashboards/operational.json
-{
-  "panels": [
-    {
-      "title": "Rate Limit Triggers",
-      "type": "timeseries",
-      "datasource": "prometheus",
-      "targets": [
-        {
-          "expr": "rate(buildkite_rate_limit_exceeded_total[5m])",
-          "legendFormat": "{{type}}"
-        }
-      ]
-    }
-  ]
-}
+2. Check Prometheus is scraping:
+```bash
+kubectl port-forward -n monitoring svc/prometheus 9090:9090
 ```
+Visit http://localhost:9090/targets
+
+## Troubleshooting
+
+1. **No metrics in Prometheus**
+   - Check the webhook /metrics endpoint
+   - Verify Prometheus scrape configs
+   - Check Prometheus logs
+
+2. **No data in Grafana**
+   - Verify Prometheus data source configuration
+   - Check queries directly in Prometheus
+   - Ensure time range matches when data started flowing
 
 ## Alerting
 
-### Critical Alerts
-
-1. **High Error Rate**
-```yaml
-alert: HighErrorRate
-expr: rate(buildkite_errors_total[5m]) > 0.1
-for: 5m
-labels:
-  severity: critical
-annotations:
-  summary: High error rate in webhook service
-```
-
-2. **Authentication Failures**
-```yaml
-alert: HighAuthFailures
-expr: rate(buildkite_webhook_auth_failures_total[5m]) > 0.05
-for: 5m
-labels:
-  severity: warning
-```
-
-3. **Publish Failures**
-```yaml
-alert: PubSubPublishFailures
-expr: rate(buildkite_pubsub_publish_requests_total{status="error"}[5m]) > 0.1
-for: 5m
-labels:
-  severity: critical
-```
-
-### Warning Alerts
-
-1. **High Latency**
-```yaml
-alert: HighLatency
-expr: histogram_quantile(0.95, rate(buildkite_webhook_request_duration_seconds_bucket[5m])) > 1
-for: 5m
-labels:
-  severity: warning
-```
-
-2. **Rate Limiting**
-```yaml
-alert: RateLimitingTriggered
-expr: rate(buildkite_rate_limit_exceeded_total[5m]) > 0.1
-for: 5m
-labels:
-  severity: warning
-```
-
-## Monitoring Best Practices
-
-### Dashboard Organization
-
-1. **Overview Dashboard**
-   - High-level service health
-   - Key performance indicators
-   - Quick problem identification
-
-2. **Operational Dashboard**
-   - Detailed metrics
-   - Debugging information
-   - Resource usage
-
-3. **SLO Dashboard**
-   - Availability metrics
-   - Latency metrics
-   - Error budget tracking
-
-### Alert Configuration
-
-1. **Severity Levels**
-   - Critical: Immediate action required
-   - Warning: Investigation needed
-   - Info: Awareness only
-
-2. **Alert Grouping**
-   - Group related alerts
-   - Prevent alert storms
-   - Reduce noise
-
-3. **Runbooks**
-   - Link alerts to runbooks
-   - Include troubleshooting steps
-   - Document escalation paths
-
-## Health Checks
-
-### Liveness Probe
-Configured in Kubernetes to check basic service health:
-```yaml
-livenessProbe:
-  httpGet:
-    path: /health
-    port: 8080
-  initialDelaySeconds: 15
-  periodSeconds: 20
-```
-
-### Readiness Probe
-Verifies service is ready to handle requests:
-```yaml
-readinessProbe:
-  httpGet:
-    path: /ready
-    port: 8080
-  initialDelaySeconds: 5
-  periodSeconds: 10
-```
-
-## Debugging
-
-### Metric Queries
-
-1. **Error Investigation**
-```promql
-# Error rate by type
-rate(buildkite_errors_total[5m])
-
-# Error ratio
-sum(rate(buildkite_errors_total[5m])) / sum(rate(buildkite_webhook_requests_total[5m]))
-```
-
-2. **Performance Analysis**
-```promql
-# 95th percentile latency
-histogram_quantile(0.95, sum(rate(buildkite_webhook_request_duration_seconds_bucket[5m])) by (le))
-
-# Request rate by status
-sum(rate(buildkite_webhook_requests_total[5m])) by (status)
-```
-
-### Common Issues
-
-1. **High Error Rates**
-   - Check logs for error patterns
-   - Verify Pub/Sub connectivity
-   - Check rate limiting status
-
-2. **High Latency**
-   - Monitor resource usage
-   - Check Pub/Sub performance
-   - Verify network connectivity
-
-3. **Authentication Issues**
-   - Check token configuration
-   - Verify secret mounting
-   - Monitor auth failure patterns
-
-## Resource Usage
-
-### Memory Profiling
-```bash
-# Get heap profile
-kubectl exec -n buildkite-webhook <pod-name> -- curl -sK http://localhost:8080/debug/pprof/heap > heap.prof
-
-# Analyze with pprof
-go tool pprof heap.prof
-```
-
-### CPU Profiling
-```bash
-# Get 30-second CPU profile
-kubectl exec -n buildkite-webhook <pod-name> -- curl -sK http://localhost:8080/debug/pprof/profile > cpu.prof
-
-# Analyze with pprof
-go tool pprof cpu.prof
-```
+Alert configurations remain in Prometheus AlertManager as before.
