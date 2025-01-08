@@ -15,6 +15,7 @@ import (
 	"github.com/mcncl/buildkite-pubsub/internal/middleware/security"
 	"github.com/mcncl/buildkite-pubsub/internal/publisher"
 	"github.com/mcncl/buildkite-pubsub/pkg/webhook"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -41,6 +42,9 @@ func main() {
 
 	// Create router
 	mux := http.NewServeMux()
+
+	// Add metrics endpoint
+	mux.Handle("/metrics", promhttp.Handler())
 
 	// Add health check routes
 	mux.HandleFunc("/health", healthCheck.HealthHandler)

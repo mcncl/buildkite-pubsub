@@ -1,35 +1,52 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: prometheus
-  namespace: monitoring
+  name: buildkite-webhook
+  namespace: buildkite-webhook
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
-      app: prometheus
+      app: buildkite-webhook
   template:
     metadata:
       labels:
-        app: prometheus
+        app: buildkite-webhook
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8080"
     spec:
       containers:
-        - name: prometheus
-          image: prom/prometheus:v2.45.0
-          args:
-            - "--config.file=/etc/prometheus/prometheus.yml"
-            - "--storage.tsdb.path=/prometheus"
-            - "--storage.tsdb.retention.time=15d"
+        - name: webhook
+          image: localhost:5000/buildkite-webhook:latest
+          imagePullPolicy: Always
           ports:
-            - containerPort: 9090
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: PROJECT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: buildkite-webhook-config
+                  key: project_id
+            - name: TOPIC_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: buildkite-webhook-config
+                  key: topic_id
+            - name: BUILDKITE_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: buildkite-webhook-secrets
+                  key: buildkite-token
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/secrets/google/credentials.json
           volumeMounts:
-            - name: config-volume
-              mountPath: /etc/prometheus
-            - name: storage-volume
-              mountPath: /prometheus
+            - name: google-cloud-key
+              mountPath: /var/secrets/google
       volumes:
-        - name: config-volume
-          configMap:
-            name: prometheus-config
-        - name: storage-volume
-          emptyDir: {}
+        - name: google-cloud-key
+          secret:
+            secretName: gcp-credentials

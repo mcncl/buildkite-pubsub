@@ -16,6 +16,9 @@ data:
       - job_name: "buildkite-webhook"
         kubernetes_sd_configs:
           - role: pod
+            namespaces:
+              names:
+                - buildkite-webhook
         relabel_configs:
           - source_labels: [__meta_kubernetes_pod_label_app]
             regex: buildkite-webhook
@@ -23,3 +26,16 @@ data:
           - source_labels: [__meta_kubernetes_pod_container_port_number]
             regex: 8080
             action: keep
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            regex: "true"
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: ${1}
+          - source_labels: [__address__]
+            action: replace
+            target_label: __address__
+            replacement: ${1}:8080
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
