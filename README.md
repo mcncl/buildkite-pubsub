@@ -31,6 +31,7 @@ This service connects Buildkite's webhook system to Google Cloud Pub/Sub, allowi
    - [Usage Guide](docs/USAGE.md) - Event patterns and examples
    - [Event Schema](docs/USAGE.md#event-structure) - Event payloads and attributes
    - [Monitoring](docs/MONITORING.md) - Metrics, alerts, and debugging
+   - [Event Filtering](docs/EVENTS.md) - Pub/Sub subscription examples
 
 ## Features
 
