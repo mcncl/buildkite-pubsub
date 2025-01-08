@@ -53,7 +53,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read the body
+	// Read and measure the body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		metrics.WebhookRequestsTotal.WithLabelValues("400", eventType).Inc()
@@ -62,6 +62,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = io.NopCloser(bytes.NewBuffer(body))
+
+	// Record initial message size
+	metrics.RecordMessageSize("raw", len(body))
+
+	// Start payload processing timer
+	processStart := time.Now()
 
 	// Parse payload
 	var payload buildkite.Payload
@@ -73,6 +79,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	eventType = payload.Event
+
+	// Record payload processing duration
+	metrics.PayloadProcessingDuration.WithLabelValues(eventType).Observe(time.Since(processStart).Seconds())
 
 	// Handle ping event specially
 	if eventType == "ping" {
@@ -93,8 +102,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Record build metrics if this is a build event
+	if build := transformed.Build; build.ID != "" {
+		metrics.RecordBuildStatus(build.State, build.Pipeline)
+		metrics.RecordPipelineBuild(build.Pipeline, build.Organization)
+
+		// Calculate and record queue time for started builds
+		if build.StartedAt.After(build.CreatedAt) {
+			queueTime := build.StartedAt.Sub(build.CreatedAt).Seconds()
+			metrics.RecordQueueTime(build.Pipeline, queueTime)
+		}
+	}
+
 	// Track pub/sub publish time
 	pubStart := time.Now()
+
+	// Prepare for publishing
+	transformedJSON, _ := json.Marshal(transformed)
+	metrics.RecordPubsubMessageSize(eventType, len(transformedJSON))
 
 	// Publish to Pub/Sub
 	msgID, err := h.publisher.Publish(r.Context(), transformed, map[string]string{
@@ -102,18 +127,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"event_type": eventType,
 	})
 
-	metrics.PubsubPublishDuration.Observe(time.Since(pubStart).Seconds())
+	pubDuration := time.Since(pubStart).Seconds()
+	metrics.PubsubPublishDuration.Observe(pubDuration)
 
 	if err != nil {
 		metrics.WebhookRequestsTotal.WithLabelValues("500", eventType).Inc()
-		metrics.PubsubPublishRequestsTotal.WithLabelValues("error").Inc()
+		metrics.PubsubPublishRequestsTotal.WithLabelValues("error", eventType).Inc()
 		metrics.ErrorsTotal.WithLabelValues("publish_error").Inc()
 		http.Error(w, fmt.Sprintf("Failed to publish message: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	metrics.WebhookRequestsTotal.WithLabelValues("200", eventType).Inc()
-	metrics.PubsubPublishRequestsTotal.WithLabelValues("success").Inc()
+	metrics.PubsubPublishRequestsTotal.WithLabelValues("success", eventType).Inc()
 	metrics.WebhookRequestDuration.WithLabelValues(eventType).Observe(time.Since(start).Seconds())
 
 	// Return success response
