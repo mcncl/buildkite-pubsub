@@ -79,9 +79,9 @@ kubectl apply -f k8s/monitoring/prometheus/service.yaml
 
 # Deploy Grafana
 kubectl apply -f k8s/monitoring/grafana/secret.yaml
-kubectl apply -f k8s/monitoring/grafana/dashboards-config.yaml
-kubectl apply -f k8s/monitoring/grafana/dashboards.yaml
-kubectl apply -f k8s/monitoring/grafana/datasources-config.yaml
+kubectl apply -f k8s/monitoring/grafana/dashboardconfig.yaml
+kubectl apply -f k8s/monitoring/grafana/dashboard.yaml
+kubectl apply -f k8s/monitoring/grafana/datasourceconfig.yaml
 kubectl apply -f k8s/monitoring/grafana/deployment.yaml
 kubectl apply -f k8s/monitoring/grafana/service.yaml
 
