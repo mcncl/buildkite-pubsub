@@ -1,63 +1,64 @@
 # Buildkite PubSub Webhook
 
-A production-ready webhook handler that forwards Buildkite events to Google Cloud Pub/Sub, with comprehensive monitoring and security features.
+A webhook handler that securely forwards Buildkite build events to Google Cloud Pub/Sub, enabling event-driven architectures and integrations with your Buildkite pipelines.
 
 ## Overview
 
-This service provides:
-- Secure webhook handling with token validation
-- Event transformation and standardization
-- Pub/Sub message publishing
-- Comprehensive monitoring with Prometheus and Grafana
-- Full Kubernetes deployment support
-- Rate limiting and security controls
-- Health monitoring and alerts
+This service connects Buildkite's webhook system to Google Cloud Pub/Sub, allowing you to:
+- Receive Buildkite build events (status changes, pipeline updates, etc.)
+- Forward events securely to Pub/Sub topics
+- Monitor and alert on webhook delivery
+- Filter and process events using Pub/Sub subscriptions
+- Build event-driven workflows and integrations
 
-## Quick Start
+## Prerequisites
 
-See our [Quick Start Guide](docs/QUICK_START.md) for a complete setup walkthrough.
+- [Go 1.20+](https://golang.org/dl/) for development
+- [Docker](https://docs.docker.com/get-docker/) for container builds
+- [kubectl](https://kubernetes.io/docs/tasks/tools/) for deployment
+- [Orbstack](https://orbstack.dev/) for local Kubernetes
+- [ngrok](https://ngrok.com/) for local webhook testing
+- [Google Cloud Project](https://cloud.google.com/) with Pub/Sub enabled
+- Buildkite organization admin access for webhook configuration
+
+## Documentation
+
+1. **Getting Started**
+   - [Quick Start Guide](docs/QUICK_START.md) - Complete deployment walkthrough
+   - [Google Cloud Setup](docs/GCP_SETUP.md) - Service account and permissions setup
+
+2. **Usage & Integration**
+   - [Usage Guide](docs/USAGE.md) - Event patterns and examples
+   - [Event Schema](docs/USAGE.md#event-structure) - Event payloads and attributes
+   - [Monitoring](docs/MONITORING.md) - Metrics, alerts, and debugging
 
 ## Features
+
+- 🔄 **Event Handling**
+  - Standardized event transformation
+  - Support for all Buildkite event types
+  - Configurable event filtering
+  - Reliable delivery with retries
 
 - 🔒 **Security**
   - Webhook token validation
   - Rate limiting (global and per-IP)
   - TLS termination
   - Security headers
-  - CORS configuration
 
-- 📊 **Monitoring**
+- 📊 **Observability**
   - Prometheus metrics
   - Grafana dashboards
-  - Alert templates
   - Health checks
+  - Alert templates
 
 - 🚀 **Deployment**
   - Kubernetes manifests
-  - Horizontal Pod Autoscaling
+  - Horizontal scaling
   - Resource management
-  - Rolling updates
+  - Zero-downtime updates
 
-- 📝 **Event Handling**
-  - Standardized event transformation
-  - Support for all Buildkite event types
-  - Configurable event filtering
-  - Error handling and retries
-
-## Documentation
-
-- [Quick Start Guide](docs/QUICK_START.md) - Complete setup walkthrough
-- [Google Cloud Setup Guide](docs/GCP_SETUP.md) - Service account and permissions
-- [Usage Guide](docs/USAGE.md) - Examples and patterns
-
-## Requirements
-
-- Go 1.20+
-- Google Cloud Project with Pub/Sub enabled
-- Kubernetes cluster (for production deployment)
-- Buildkite webhook token
-
-## Development
+## Local Development
 
 ```bash
 # Run locally
@@ -66,16 +67,22 @@ go run cmd/webhook/main.go
 # Run tests
 go test ./...
 
-# Build
-go build ./cmd/webhook
+# Build container
+docker build -t buildkite-webhook .
 ```
+
+## Deployment
+
+Follow the [Quick Start Guide](docs/QUICK_START.md) for complete deployment instructions, or see individual guides:
+- [GCP Setup Guide](docs/GCP_SETUP.md) for Google Cloud configuration
+- [Usage Guide](docs/USAGE.md) for event handling patterns
 
 ## Contributing
 
 1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -am 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
 ## License

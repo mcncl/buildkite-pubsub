@@ -1,10 +1,22 @@
 # Usage Guide
 
-This guide provides examples and patterns for working with Buildkite events once they're published to Pub/Sub.
+This guide explains how to work with Buildkite events in Google Cloud Pub/Sub after setting up the webhook service.
 
-## Event Structure
+## Event Overview
 
-Events are published with the following attributes:
+### Event Types
+
+The service forwards all Buildkite webhook events to Pub/Sub. Common event types include:
+
+- `build.scheduled` - Build has been scheduled
+- `build.started` - Build has started running
+- `build.finished` - Build has completed
+- `job.started` - Individual job has started
+- `job.finished` - Individual job has completed
+
+### Event Format
+
+Each event is published with standard attributes:
 ```json
 {
   "origin": "buildkite-webhook",
@@ -28,218 +40,177 @@ Example event payload:
 }
 ```
 
-## Common Patterns
+## Working with Events
 
-### 1. Event Filtering
+### Creating Subscriptions
 
-Filter events using Pub/Sub subscription filters:
-
+1. Basic subscription:
 ```bash
-# Filter for specific event types
+# Create a subscription for all events
+gcloud pubsub subscriptions create buildkite-events-all \
+  --topic buildkite-events
+```
+
+2. Filtered subscription:
+```bash
+# Subscribe to specific event types
 gcloud pubsub subscriptions create build-finished \
   --topic buildkite-events \
   --filter="attributes.event_type = \"build.finished\""
 
-# Filter for specific organization
+# Filter by organization
 gcloud pubsub subscriptions create org-builds \
   --topic buildkite-events \
   --filter="attributes.event_type = \"build.finished\" AND organization = \"your-org\""
 ```
 
-### 2. Event Storage
+### Processing Events
 
-#### BigQuery Storage
+Here are common patterns for event processing:
+
+1. **Cloud Functions**
+```python
+def process_event(event, context):
+    """Process a Pub/Sub message from Buildkite."""
+    import base64
+    import json
+
+    # Decode the Pub/Sub message
+    pubsub_message = base64.b64decode(event['data']).decode('utf-8')
+    buildkite_event = json.loads(pubsub_message)
+
+    # Process based on event type
+    event_type = buildkite_event['event_type']
+    if event_type == 'build.finished':
+        handle_build_finished(buildkite_event)
+    elif event_type == 'build.started':
+        handle_build_started(buildkite_event)
+```
+
+2. **Cloud Run**
+```python
+from flask import Flask, request
+import json
+
+app = Flask(__name__)
+
+@app.route('/', methods=['POST'])
+def handle_pubsub():
+    envelope = request.get_json()
+    message = json.loads(
+        base64.b64decode(envelope['message']['data']).decode('utf-8')
+    )
+
+    process_buildkite_event(message)
+    return '', 204
+```
+
+## Storage Patterns
+
+### Short-term Analysis
+
+For short-term analysis and monitoring, use Pub/Sub subscriptions with appropriate retention:
+
+```bash
+# Create subscription with 7-day retention
+gcloud pubsub subscriptions create buildkite-analysis \
+  --topic buildkite-events \
+  --message-retention-duration="7d" \
+  --expiration-period="7d"
+```
+
+### Long-term Storage
+
+For long-term storage and analysis:
+
+1. **BigQuery** - For analysis and querying:
 ```bash
 # Create dataset and table
-bq mk --dataset \
-  your-project:buildkite_events
-
+bq mk --dataset your-project:buildkite_events
 bq mk --table \
   --time_partitioning_field timestamp \
-  your-project:buildkite_events.builds \
-  ./schemas/builds.json
+  --schema 'event_id:STRING,timestamp:TIMESTAMP,data:JSON' \
+  your-project:buildkite_events.builds
 ```
 
-Example Cloud Function to store events:
-```python
-from google.cloud import bigquery
-
-def store_event(event, context):
-    client = bigquery.Client()
-    dataset_id = "buildkite_events"
-    table_id = "builds"
-
-    table = client.get_table(f"{dataset_id}.{table_id}")
-    rows_to_insert = [{
-        "event_id": context.event_id,
-        "timestamp": context.timestamp,
-        "data": event
-    }]
-
-    client.insert_rows(table, rows_to_insert)
-```
-
-#### Cloud Storage Archive
-```python
-from google.cloud import storage
-
-def archive_event(event, context):
-    client = storage.Client()
-    bucket = client.get_bucket("buildkite-events-archive")
-
-    # Organize by year/month/day
-    date = context.timestamp.split("T")[0]
-    year, month, day = date.split("-")
-    path = f"{year}/{month}/{day}/{context.event_id}.json"
-
-    blob = bucket.blob(path)
-    blob.upload_from_string(json.dumps(event))
-```
-
-### 3. Event Processing
-
-#### Slack Notifications
-```python
-import os
-from slack_sdk import WebClient
-
-def notify_slack(event, context):
-    if event["build"]["state"] != "failed":
-        return
-
-    client = WebClient(token=os.environ["SLACK_TOKEN"])
-
-    client.chat_postMessage(
-        channel="#builds",
-        text=f"Build failed: {event['build']['web_url']}"
-    )
-```
-
-#### GitHub Status Updates
-```python
-import os
-import requests
-
-def update_github_status(event, context):
-    if "github" not in event["build"]["source"]:
-        return
-
-    token = os.environ["GITHUB_TOKEN"]
-    headers = {
-        "Authorization": f"token {token}",
-        "Accept": "application/vnd.github.v3+json"
-    }
-
-    state = "success" if event["build"]["state"] == "passed" else "failure"
-
-    requests.post(
-        event["build"]["source"]["github"]["status_url"],
-        headers=headers,
-        json={
-            "state": state,
-            "description": f"Build #{event['build']['number']}",
-            "target_url": event["build"]["web_url"]
-        }
-    )
-```
-
-### 4. Monitoring & Alerting
-
-#### Cloud Monitoring Dashboard
-```terraform
-resource "google_monitoring_dashboard" "buildkite" {
-  dashboard_json = jsonencode({
-    displayName = "Buildkite Events Dashboard"
-    gridLayout = {
-      widgets = [
-        {
-          title = "Events by Type"
-          xyChart = {
-            dataSets = [{
-              timeSeriesQuery = {
-                timeSeriesFilter = {
-                  filter = "metric.type=\"pubsub.googleapis.com/subscription/delivered_messages\""
-                  aggregation = {
-                    groupByFields = ["metric.labels.event_type"]
-                  }
-                }
-              }
-            }]
-          }
-        }
-      ]
-    }
-  })
-}
-```
-
-#### Alert Policies
-```terraform
-resource "google_monitoring_alert_policy" "failed_builds" {
-  display_name = "Failed Builds Alert"
-  conditions {
-    display_name = "High Build Failure Rate"
-    condition_threshold {
-      filter = "metric.type=\"pubsub.googleapis.com/subscription/delivered_messages\" AND metric.labels.event_type=\"build.finished\" AND metric.labels.state=\"failed\""
-      duration = "300s"
-      comparison = "COMPARISON_GT"
-      threshold_value = 5
-    }
-  }
-
-  notification_channels = [
-    google_monitoring_notification_channel.email.name
-  ]
-}
+2. **Cloud Storage** - For archival:
+```bash
+# Create archive bucket with lifecycle policy
+gsutil mb gs://buildkite-events-archive
+gsutil lifecycle set lifecycle-policy.json gs://buildkite-events-archive
 ```
 
 ## Best Practices
 
-1. **Event Retention**
-   - Set appropriate message retention on subscriptions
-   - Archive important events to Cloud Storage/BigQuery
-   - Consider cost vs retention needs
+### Event Processing
+
+1. **Idempotency**
+   - Use event IDs for deduplication
+   - Design handlers to be idempotent
+   - Use atomic operations where possible
 
 2. **Error Handling**
-   - Use dead-letter topics for failed message processing
    - Implement exponential backoff for retries
-   - Log errors with context for debugging
+   - Use dead-letter topics for failed messages
+   - Log errors with context
 
 3. **Performance**
-   - Use message filtering at subscription level when possible
-   - Batch inserts for storage operations
+   - Filter events at subscription level
+   - Batch operations when possible
    - Monitor subscription backlog
 
-4. **Security**
-   - Use service accounts with minimal permissions
-   - Encrypt sensitive data before storage
-   - Regularly rotate credentials
+### Security
 
-5. **Monitoring**
-   - Set up alerts for critical failures
+1. **Access Control**
+   - Use service accounts with minimal permissions
+   - Rotate credentials regularly
+   - Encrypt sensitive data
+
+2. **Monitoring**
    - Monitor message processing latency
-   - Track error rates and types
+   - Set up alerts for processing failures
+   - Track subscription backlogs
 
 ## Troubleshooting
 
-Common issues and solutions:
+### Common Issues
 
-1. **Message Processing Delays**
-   - Check subscription backlog
-   - Verify Cloud Function/Cloud Run scaling
-   - Check resource quotas
-
-2. **Missing Events**
-   - Verify webhook delivery in Buildkite
-   - Check Pub/Sub message retention
+1. **Messages Not Arriving**
+   - Check webhook logs for delivery issues
    - Verify subscription filters
+   - Check Pub/Sub quotas and permissions
 
-3. **Error Processing**
-   - Check Cloud Function logs
-   - Verify service account permissions
-   - Check resource constraints
+2. **Processing Delays**
+   - Monitor subscription backlog
+   - Check processor scaling settings
+   - Verify resource allocation
 
-For more examples and detailed documentation, check out:
-- [Cloud Functions Examples](https://github.com/GoogleCloudPlatform/python-docs-samples/tree/main/functions)
-- [Pub/Sub Documentation](https://cloud.google.com/pubsub/docs)
-- [Cloud Run Documentation](https://cloud.google.com/run/docs)
+3. **Data Issues**
+   - Validate event schema
+   - Check for missing fields
+   - Verify data transformations
+
+### Debug Tools
+
+1. **Pub/Sub**
+```bash
+# Check subscription backlog
+gcloud pubsub subscriptions seek buildkite-events-all --time="2023-01-01T00:00:00Z"
+
+# View subscription details
+gcloud pubsub subscriptions describe buildkite-events-all
+```
+
+2. **Logs**
+```bash
+# View webhook logs
+kubectl logs -n buildkite-webhook -l app=buildkite-webhook
+
+# View processor logs (Cloud Functions)
+gcloud functions logs read event-processor
+```
+
+For more examples and reference implementations, check out:
+- [Event Processing Examples](./examples/)
+- [Integration Patterns](./docs/INTEGRATIONS.md)
+- [Monitoring Guide](./docs/MONITORING.md)

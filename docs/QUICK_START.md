@@ -1,184 +1,250 @@
-# Quick Start Guide for Buildkite PubSub Webhook
+# Quick Start Guide
 
-This guide will walk you through setting up the Buildkite PubSub Webhook system from scratch, including monitoring and visualization.
+This guide walks through setting up the Buildkite PubSub Webhook service for local development and testing.
 
 ## Prerequisites
 
-- [Orbstack](https://orbstack.dev/) installed and running
-- [kubectl](https://kubernetes.io/docs/tasks/tools/) configured to work with Orbstack
-- [Go 1.20+](https://golang.org/dl/) installed
-- A Buildkite account with webhook access
-- Google Cloud Project access (for Pub/Sub)
+Before starting, ensure you have:
+
+1. **Local Development Tools**
+   - [Docker](https://docs.docker.com/get-docker/)
+   - [Go 1.20+](https://golang.org/dl/)
+   - [kubectl](https://kubernetes.io/docs/tasks/tools/)
+   - [Orbstack](https://orbstack.dev/)
+   - [ngrok](https://ngrok.com/)
+
+2. **Google Cloud Setup**
+   - A Google Cloud Project with Pub/Sub enabled
+   - Service account with Pub/Sub permissions
+   - Service account key file (see [GCP Setup Guide](GCP_SETUP.md))
+
+3. **Buildkite Access**
+   - Organization admin access to create webhooks
+   - A webhook token (you can generate this yourself)
 
 ## 1. Initial Setup
 
-First, clone the repository and set up your environment:
-
 ```bash
+# Clone the repository
 git clone <your-repo-url>
 cd buildkite-pubsub
 
-# Set up environment variables
-export PROJECT_ID="your-gcp-project"
-export TOPIC_ID="buildkite-events"
-export BUILDKITE_WEBHOOK_TOKEN="your-buildkite-webhook-token"
-```
-
-## 2. Create Kubernetes Namespace and Resources
-
-```bash
-# Create namespace
+# Create Kubernetes namespaces
 kubectl create namespace buildkite-webhook
-
-# Create secrets (use base64 encoded values)
-echo -n "$BUILDKITE_WEBHOOK_TOKEN" | base64 > token.b64
-echo -n "$PROJECT_ID" | base64 > project.b64
-
-kubectl create secret generic buildkite-webhook-secrets \
-  --namespace buildkite-webhook \
-  --from-file=buildkite-token=token.b64 \
-  --from-file=project-id=project.b64
-
-# Clean up temporary files
-rm token.b64 project.b64
-
-# Generate TLS certificates
-./generate-certs
-```
-
-## 3. Set Up Monitoring Stack
-
-```bash
-# Create monitoring namespace
 kubectl create namespace monitoring
 
-# Apply Prometheus configurations
-kubectl apply -f k8s/monitoring/prometheus-configmap.yaml
-kubectl apply -f k8s/monitoring/prometheus-deployment.yaml
-kubectl apply -f k8s/monitoring/prometheus-service.yaml
-
-# Apply Grafana configurations
-kubectl apply -f k8s/monitoring/grafana-configmap.yaml
-kubectl apply -f k8s/monitoring/grafana-deployment.yaml
-kubectl apply -f k8s/monitoring/grafana-service.yaml
-
-# Set up alerts
-kubectl apply -f k8s/monitoring/alerts.yaml
+# Set environment variables
+export PROJECT_ID="your-gcp-project"
+export TOPIC_ID="buildkite-events"
+export BUILDKITE_WEBHOOK_TOKEN="your-webhook-token"
 ```
 
-## 4. Deploy the Webhook Service
+## 2. Configure Google Cloud
+
+1. Set up your service account by following the [GCP Setup Guide](GCP_SETUP.md)
+2. Create the Pub/Sub topic:
+```bash
+gcloud pubsub topics create $TOPIC_ID
+```
+3. Ensure your credentials.json file is in your working directory
+
+## 3. Create Kubernetes Secrets and Config
 
 ```bash
-# Apply core configurations
-kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/deployment.yaml
-kubectl apply -f k8s/service.yaml
-kubectl apply -f k8s/ingress.yaml
-kubectl apply -f k8s/hpa.yaml
+# Create webhook token secret
+kubectl create secret generic buildkite-webhook-secrets \
+  --namespace buildkite-webhook \
+  --from-literal=buildkite-token="$BUILDKITE_WEBHOOK_TOKEN"
 
-# Verify deployments
-kubectl get pods -n buildkite-webhook
+# Create GCP credentials secret
+kubectl create secret generic gcp-credentials \
+  --namespace buildkite-webhook \
+  --from-file=credentials.json
+
+# Create ConfigMap for project configuration
+kubectl create configmap buildkite-webhook-config \
+  --namespace buildkite-webhook \
+  --from-literal=project_id="$PROJECT_ID" \
+  --from-literal=topic_id="$TOPIC_ID"
+```
+
+## 4. Deploy Monitoring Stack
+
+```bash
+# Deploy Prometheus
+kubectl apply -f k8s/monitoring/prometheus/configmap.yaml
+kubectl apply -f k8s/monitoring/prometheus/alerts.yaml
+kubectl apply -f k8s/monitoring/prometheus/deployment.yaml
+kubectl apply -f k8s/monitoring/prometheus/service.yaml
+
+# Deploy Grafana
+kubectl apply -f k8s/monitoring/grafana/secret.yaml
+kubectl apply -f k8s/monitoring/grafana/dashboards-config.yaml
+kubectl apply -f k8s/monitoring/grafana/dashboards.yaml
+kubectl apply -f k8s/monitoring/grafana/datasources-config.yaml
+kubectl apply -f k8s/monitoring/grafana/deployment.yaml
+kubectl apply -f k8s/monitoring/grafana/service.yaml
+
+# Verify monitoring deployments
 kubectl get pods -n monitoring
 ```
 
-## 5. Configure Local Development
-
-For local development and testing:
+## 5. Build and Deploy Webhook Service
 
 ```bash
-# Run the service locally
-go run cmd/webhook/main.go
+# Start local Docker registry
+docker run -d -p 5000:5000 --restart always --name registry registry:2
 
-# Or with hot reload using Air
-go install github.com/cosmtrek/air@latest
-air
+# Build and push image
+docker build -t buildkite-webhook .
+docker tag buildkite-webhook localhost:5000/buildkite-webhook:latest
+docker push localhost:5000/buildkite-webhook:latest
+
+# Deploy the webhook service
+kubectl apply -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: buildkite-webhook
+  namespace: buildkite-webhook
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: buildkite-webhook
+  template:
+    metadata:
+      labels:
+        app: buildkite-webhook
+    spec:
+      containers:
+        - name: webhook
+          image: localhost:5000/buildkite-webhook:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PROJECT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: buildkite-webhook-config
+                  key: project_id
+            - name: TOPIC_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: buildkite-webhook-config
+                  key: topic_id
+            - name: BUILDKITE_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: buildkite-webhook-secrets
+                  key: buildkite-token
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/secrets/google/credentials.json
+          volumeMounts:
+            - name: google-cloud-key
+              mountPath: /var/secrets/google
+      volumes:
+        - name: google-cloud-key
+          secret:
+            secretName: gcp-credentials
+EOF
+
+# Create the service
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: buildkite-webhook
+  namespace: buildkite-webhook
+  labels:
+    app: buildkite-webhook
+spec:
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    app: buildkite-webhook
+EOF
+
+# Verify deployment
+kubectl get pods -n buildkite-webhook
 ```
 
-## 6. Set Up Buildkite Webhook
+## 6. Set Up External Access
+
+```bash
+# Port forward the webhook service locally
+kubectl port-forward -n buildkite-webhook svc/buildkite-webhook 8081:80 &
+
+# Start ngrok in a separate terminal
+ngrok http 8081
+```
+
+Note the ngrok URL (e.g., `https://random-string.ngrok-free.app`) for use in Buildkite settings.
+
+## 7. Configure Buildkite Webhook
 
 1. Go to your Buildkite organization settings
 2. Navigate to Webhooks
 3. Create a new webhook:
-   - URL: `https://webhook.your-domain.com/webhook` (or your local URL)
-   - Events: Select the events you want to receive
-   - Token: Use the same token you set in `BUILDKITE_WEBHOOK_TOKEN`
+   - URL: Your ngrok URL + `/webhook` (e.g., `https://random-string.ngrok-free.app/webhook`)
+   - Events: Select 'All Events' or specific events
+   - Token: Use the same token from `BUILDKITE_WEBHOOK_TOKEN`
+   - SSL Verification: Enabled (ngrok provides SSL)
 
-## 7. Verify the Setup
-
-Check the following endpoints:
-
-- Health check: `https://webhook.your-domain.com/health`
-- Readiness: `https://webhook.your-domain.com/ready`
-- Prometheus metrics: `http://localhost:9090`
-- Grafana dashboards: `http://localhost:3000`
-
-### Testing the Webhook
+## 8. Test the Webhook
 
 ```bash
-# Send a test webhook
+# Send a test ping
 curl -X POST \
   -H "Content-Type: application/json" \
-  -H "X-Buildkite-Token: your-token" \
-  https://webhook.your-domain.com/webhook \
-  -d '{
-    "event": "build.started",
-    "build": {
-      "id": "test-build",
-      "url": "https://buildkite.com/test",
-      "number": 1,
-      "state": "started"
-    }
-  }'
+  -H "X-Buildkite-Token: $BUILDKITE_WEBHOOK_TOKEN" \
+  "https://your-ngrok-url/webhook" \
+  -d '{"event":"ping"}'
+
+# Expected response:
+# {"message":"Pong! Webhook received successfully"}
+
+# View webhook service logs
+kubectl logs -f -n buildkite-webhook -l app=buildkite-webhook
 ```
 
-## 8. Monitor Events
-
-1. Access Grafana (default credentials: admin/admin):
-   ```bash
-   kubectl port-forward -n monitoring svc/grafana 3000:3000
-   ```
-
-2. Add Prometheus as a data source:
-   - URL: `http://prometheus:9090`
-   - Access: Server (default)
-
-3. Import the provided dashboards from `k8s/monitoring/dashboards/`
-
-## 9. Troubleshooting
-
-Common issues and solutions:
-
-1. Check pod status:
-   ```bash
-   kubectl get pods -n buildkite-webhook
-   kubectl describe pod <pod-name> -n buildkite-webhook
-   ```
-
-2. View logs:
-   ```bash
-   kubectl logs -f deployment/buildkite-webhook -n buildkite-webhook
-   ```
-
-3. Check Prometheus targets:
-   ```bash
-   kubectl port-forward -n monitoring svc/prometheus 9090:9090
-   # Visit http://localhost:9090/targets
-   ```
-
-## 10. Clean Up
-
-To remove everything:
+## 9. Set Up Monitoring (Optional)
 
 ```bash
-kubectl delete namespace buildkite-webhook
-kubectl delete namespace monitoring
+# Access Grafana
+kubectl port-forward -n monitoring svc/grafana 3001:3000 &
+# Visit http://localhost:3001 (admin/admin)
+
+# Access Prometheus
+kubectl port-forward -n monitoring svc/prometheus 9091:9090 &
+# Visit http://localhost:9091
+```
+
+## Cleanup
+
+Use our cleanup script to remove all resources:
+
+```bash
+./cleanup.sh
+
+# Or run with dry-run to preview changes
+./cleanup.sh --dry-run
 ```
 
 ## Next Steps
 
-- Set up production-grade TLS certificates
-- Configure persistent storage for Prometheus and Grafana
-- Set up alerts to your preferred notification channels
-- Add custom dashboards for your specific metrics
+1. Set up event subscribers (see [Usage Guide](USAGE.md))
+2. Configure alerts for failed webhooks
+3. Create custom dashboards for your metrics
+4. Set up production deployment with proper ingress
 
-For more detailed information, check the [Usage Guide](USAGE.md) and individual component documentation.
+## Troubleshooting
+
+- **Pod not starting**: Check logs with `kubectl logs -n buildkite-webhook -l app=buildkite-webhook`
+- **Connection refused**: Ensure port-forwards are running
+- **Token invalid**: Verify token in secret matches Buildkite configuration
+- **Permission denied**: Check GCP credentials and permissions
