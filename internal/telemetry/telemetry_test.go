@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestProviderLifecycle(t *testing.T) {
@@ -137,14 +139,12 @@ func TestTracingMiddleware(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Verify we have a context with span
-				span := r.Context().Value("trace-context")
+				span := trace.SpanFromContext(r.Context())
 				if span == nil && provider.isInit {
 					t.Error("Expected span in context when provider is initialized")
 				}
 				w.WriteHeader(tt.handlerStatus)
 			})
-
 			// Create middleware
 			wrappedHandler := provider.TracingMiddleware(handler)
 
