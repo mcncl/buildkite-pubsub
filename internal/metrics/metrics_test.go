@@ -1,11 +1,99 @@
 package metrics
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 )
+
+// Helper function to get counter value
+func getCounterValue(t *testing.T, c prometheus.Counter) float64 {
+	t.Helper()
+	var metric dto.Metric
+	if err := c.Write(&metric); err != nil {
+		t.Fatalf("Error getting counter value: %v", err)
+	}
+	return metric.GetCounter().GetValue()
+}
+
+// Helper function to get histogram value
+func getHistogramValue(t *testing.T, h prometheus.Observer) *dto.Histogram {
+	t.Helper()
+	var metric dto.Metric
+	if err := h.(prometheus.Metric).Write(&metric); err != nil {
+		t.Fatalf("Error getting histogram value: %v", err)
+	}
+	return metric.GetHistogram()
+}
+
+func TestConcurrentMetricRecording(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	InitMetrics(reg)
+
+	const numGoroutines = 100
+	done := make(chan bool)
+
+	// Record metrics concurrently
+	for i := 0; i < numGoroutines; i++ {
+		go func(i int) {
+			defer func() {
+				done <- true
+			}()
+
+			// Record different types of metrics concurrently
+			RecordBuildStatus("passed", fmt.Sprintf("pipeline-%d", i))
+			RecordPipelineBuild(fmt.Sprintf("pipeline-%d", i), "test-org")
+			RecordQueueTime(fmt.Sprintf("pipeline-%d", i), float64(i))
+			RecordMessageSize("build.started", i*1000)
+			RecordPubsubMessageSize("build.started", i*1000)
+			RecordPubsubRetry("build.started")
+		}(i)
+	}
+
+	// Wait for all goroutines to finish
+	for i := 0; i < numGoroutines; i++ {
+		<-done
+	}
+
+	// Verify metrics were recorded correctly
+	metrics, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("Failed to gather metrics: %v", err)
+	}
+
+	// Verify metric counts
+	for _, mf := range metrics {
+		switch mf.GetName() {
+		case "buildkite_build_status_total":
+			if len(mf.GetMetric()) != numGoroutines {
+				t.Errorf("Expected %d build status metrics, got %d", numGoroutines, len(mf.GetMetric()))
+			}
+		case "buildkite_pipeline_builds_total":
+			if len(mf.GetMetric()) != numGoroutines {
+				t.Errorf("Expected %d pipeline build metrics, got %d", numGoroutines, len(mf.GetMetric()))
+			}
+		}
+	}
+}
+
+func TestMetricsBeforeInitialization(t *testing.T) {
+	// Reset all metrics to nil
+	WebhookRequestsTotal = nil
+	WebhookRequestDuration = nil
+	AuthFailures = nil
+	// ... reset other metrics ...
+
+	// Attempt to record metrics before initialization
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected panic when recording metrics before initialization")
+		}
+	}()
+
+	RecordBuildStatus("passed", "test-pipeline")
+}
 
 func TestMetricsRecording(t *testing.T) {
 	// Initialize test registry
@@ -115,52 +203,53 @@ func TestMetricsRecording(t *testing.T) {
 	}
 }
 
-// Helper function to get counter value
-func getCounterValue(t *testing.T, c prometheus.Counter) float64 {
-	t.Helper()
-	var metric dto.Metric
-	if err := c.Write(&metric); err != nil {
-		t.Fatalf("Error getting counter value: %v", err)
-	}
-	return metric.GetCounter().GetValue()
-}
-
-// Helper function to get histogram value
-func getHistogramValue(t *testing.T, h prometheus.Observer) *dto.Histogram {
-	t.Helper()
-	var metric dto.Metric
-	if err := h.(prometheus.Metric).Write(&metric); err != nil {
-		t.Fatalf("Error getting histogram value: %v", err)
-	}
-	return metric.GetHistogram()
-}
-
-func TestInitMetricsRegistration(t *testing.T) {
-	// Test that metrics can be registered multiple times with different registries
-	reg1 := prometheus.NewRegistry()
-	InitMetrics(reg1)
-
-	reg2 := prometheus.NewRegistry()
-	InitMetrics(reg2)
-
-	// Record some metrics with the second registry
-	RecordBuildStatus("passed", "test-pipeline")
-
-	// Verify metrics were recorded in reg2
-	families, err := reg2.Gather()
-	if err != nil {
-		t.Fatalf("Error gathering metrics: %v", err)
+func TestMetricsInitialization(t *testing.T) {
+	tests := []struct {
+		name      string
+		setupFunc func() prometheus.Registerer
+		wantError bool
+	}{
+		{
+			name: "fresh registry initializes successfully",
+			setupFunc: func() prometheus.Registerer {
+				return prometheus.NewRegistry()
+			},
+			wantError: false,
+		},
+		{
+			name: "double initialization fails",
+			setupFunc: func() prometheus.Registerer {
+				reg := prometheus.NewRegistry()
+				InitMetrics(reg)
+				return reg
+			},
+			wantError: true,
+		},
+		{
+			name: "nil registry fails",
+			setupFunc: func() prometheus.Registerer {
+				return nil
+			},
+			wantError: true,
+		},
 	}
 
-	var found bool
-	for _, family := range families {
-		if family.GetName() == "buildkite_build_status_total" {
-			found = true
-			break
-		}
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					if !tt.wantError {
+						t.Errorf("InitMetrics panicked unexpectedly: %v", r)
+					}
+				}
+			}()
 
-	if !found {
-		t.Error("Expected to find buildkite_build_status_total metric in second registry")
+			reg := tt.setupFunc()
+			InitMetrics(reg)
+
+			if tt.wantError {
+				t.Error("Expected error but got none")
+			}
+		})
 	}
 }

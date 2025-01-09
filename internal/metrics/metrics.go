@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"fmt"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -24,7 +26,11 @@ var (
 )
 
 // InitMetrics initializes metrics with a specific registry
-func InitMetrics(reg prometheus.Registerer) {
+func InitMetrics(reg prometheus.Registerer) error {
+	if reg == nil {
+		return fmt.Errorf("registry cannot be nil")
+	}
+
 	factory := promauto.With(reg)
 
 	WebhookRequestsTotal = factory.NewCounterVec(
@@ -146,6 +152,8 @@ func InitMetrics(reg prometheus.Registerer) {
 		},
 		[]string{"event_type"},
 	)
+
+	return nil
 }
 
 // Helper functions for recording metrics
