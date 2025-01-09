@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -69,8 +70,16 @@ func NewProvider(cfg Config) (*Provider, error) {
 	}, nil
 }
 
-// Start initializes the telemetry provider
+// Start initializes the telemetry provider with timeout
 func (p *Provider) Start(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	// Add timeout to context
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -82,6 +91,7 @@ func (p *Provider) Start(ctx context.Context) error {
 	client := otlptracegrpc.NewClient(
 		otlptracegrpc.WithEndpoint(p.config.OTLPEndpoint),
 		otlptracegrpc.WithInsecure(),
+		otlptracegrpc.WithTimeout(5*time.Second),
 	)
 
 	exp, err := otlptrace.New(ctx, client)
