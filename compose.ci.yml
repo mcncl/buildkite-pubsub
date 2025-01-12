@@ -26,25 +26,6 @@ services:
       service: dev
     command: gofumpt -l .
 
-  # Production application service - only used for local development of the app itself
-  app:
-    profiles:
-      - app
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
-    environment:
-      - PORT=8080
-      - PROJECT_ID
-      - TOPIC_ID
-      - BUILDKITE_WEBHOOK_TOKEN
-      - GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials.json
-    volumes:
-      - ${GOOGLE_APPLICATION_CREDENTIALS:-}:/tmp/credentials.json:ro
-
-  # Release tooling
   goreleaser:
     profiles:
       - release
