@@ -7,11 +7,13 @@ import (
 	"github.com/google/uuid"
 )
 
+type contextKey string
+
 const (
 	// RequestIDHeader is the header used for request ID propagation
 	RequestIDHeader = "X-Request-ID"
 	// RequestIDKey is the context key for request ID
-	RequestIDKey = "requestID"
+	RequestIDKey = contextKey("requestID")
 )
 
 // WithRequestID adds a request ID to the request context and response headers

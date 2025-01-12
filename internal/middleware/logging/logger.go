@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+type contextKey string
+
 // LogEntry represents a log entry for a request
 type LogEntry struct {
 	RequestID  string

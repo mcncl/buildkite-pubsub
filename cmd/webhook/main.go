@@ -10,11 +10,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mcncl/buildkite-pubsub/internal/metrics"
 	"github.com/mcncl/buildkite-pubsub/internal/middleware/logging"
 	"github.com/mcncl/buildkite-pubsub/internal/middleware/request"
 	"github.com/mcncl/buildkite-pubsub/internal/middleware/security"
 	"github.com/mcncl/buildkite-pubsub/internal/publisher"
 	"github.com/mcncl/buildkite-pubsub/pkg/webhook"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -23,6 +25,12 @@ func main() {
 
 	// Initialize health checker
 	healthCheck := webhook.NewHealthCheck()
+
+	// Add metrics initialisation
+	reg := prometheus.NewRegistry()
+	if err := metrics.InitMetrics(reg); err != nil {
+		log.Fatalf("Failed to initialize metrics: %v", err)
+	}
 
 	// Create publisher
 	pub, err := publisher.NewPubSubPublisher(ctx,

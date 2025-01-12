@@ -12,7 +12,10 @@ import (
 func TestIPAllowList(t *testing.T) {
 	// Initialize metrics for tests
 	reg := prometheus.NewRegistry()
-	metrics.InitMetrics(reg)
+	err := metrics.InitMetrics(reg)
+	if err != nil {
+		t.Fatalf("failed to initialize metrics: %v", err)
+	}
 
 	tests := []struct {
 		name           string

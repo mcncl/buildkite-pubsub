@@ -10,7 +10,6 @@ import (
 	"github.com/mcncl/buildkite-pubsub/internal/metrics"
 	"github.com/mcncl/buildkite-pubsub/internal/publisher"
 	"github.com/prometheus/client_golang/prometheus"
-	dto "github.com/prometheus/client_model/go"
 )
 
 func TestHandler(t *testing.T) {
@@ -50,16 +49,16 @@ func TestHandler(t *testing.T) {
 			wantPublished: true,
 			wantEventType: "build.started",
 			wantMetrics: map[string]bool{
-				"buildkite_webhook_requests_total":                 true,
-				"buildkite_webhook_request_duration_seconds":       true,
-				"buildkite_message_size_bytes":                    true,
-				"buildkite_payload_processing_duration_seconds":    true,
-				"buildkite_build_status_total":                    true,
-				"buildkite_pipeline_builds_total":                 true,
-				"buildkite_queue_time_seconds":                    true,
-				"buildkite_pubsub_message_size_bytes":            true,
-				"buildkite_pubsub_publish_duration_seconds":       true,
-				"buildkite_pubsub_publish_requests_total":         true,
+				"buildkite_webhook_requests_total":              true,
+				"buildkite_webhook_request_duration_seconds":    true,
+				"buildkite_message_size_bytes":                  true,
+				"buildkite_payload_processing_duration_seconds": true,
+				"buildkite_build_status_total":                  true,
+				"buildkite_pipeline_builds_total":               true,
+				"buildkite_queue_time_seconds":                  true,
+				"buildkite_pubsub_message_size_bytes":           true,
+				"buildkite_pubsub_publish_duration_seconds":     true,
+				"buildkite_pubsub_publish_requests_total":       true,
 			},
 		},
 		{
@@ -71,7 +70,7 @@ func TestHandler(t *testing.T) {
 			wantPublished: false,
 			wantMetrics: map[string]bool{
 				"buildkite_webhook_requests_total": true,
-				"buildkite_errors_total":          true,
+				"buildkite_errors_total":           true,
 			},
 		},
 		{
@@ -82,9 +81,9 @@ func TestHandler(t *testing.T) {
 			wantStatus:    http.StatusUnauthorized,
 			wantPublished: false,
 			wantMetrics: map[string]bool{
-				"buildkite_webhook_requests_total":     true,
+				"buildkite_webhook_requests_total":      true,
 				"buildkite_webhook_auth_failures_total": true,
-				"buildkite_errors_total":               true,
+				"buildkite_errors_total":                true,
 			},
 		},
 		{
@@ -96,8 +95,8 @@ func TestHandler(t *testing.T) {
 			wantPublished: false,
 			wantMetrics: map[string]bool{
 				"buildkite_webhook_requests_total": true,
-				"buildkite_errors_total":          true,
-				"buildkite_message_size_bytes":    true,
+				"buildkite_errors_total":           true,
+				"buildkite_message_size_bytes":     true,
 			},
 		},
 		{
@@ -110,7 +109,7 @@ func TestHandler(t *testing.T) {
 			wantEventType: "ping",
 			wantMetrics: map[string]bool{
 				"buildkite_webhook_requests_total":              true,
-				"buildkite_message_size_bytes":                 true,
+				"buildkite_message_size_bytes":                  true,
 				"buildkite_payload_processing_duration_seconds": true,
 			},
 		},
@@ -124,13 +123,16 @@ func TestHandler(t *testing.T) {
 			prometheus.DefaultGatherer = reg
 
 			// Initialize metrics with test registry
-			metrics.InitMetrics(reg)
+			err := metrics.InitMetrics(reg)
+			if err != nil {
+				t.Fatalf("failed to initialize metrics: %v", err)
+			}
 
 			// Create handler
 			mockPub := publisher.NewMockPublisher()
 			handler := NewHandler(Config{
 				BuildkiteToken: "test-token",
-				Publisher:     mockPub,
+				Publisher:      mockPub,
 			})
 
 			// Create request
@@ -216,20 +218,4 @@ func metricExists(metricName string) bool {
 		}
 	}
 	return false
-}
-
-// Helper function to get metric value
-func getMetricValue(metric prometheus.Metric) float64 {
-	var m dto.Metric
-	metric.Write(&m)
-	if m.Counter != nil {
-		return m.Counter.GetValue()
-	}
-	if m.Gauge != nil {
-		return m.Gauge.GetValue()
-	}
-	if m.Histogram != nil {
-		return float64(m.Histogram.GetSampleCount())
-	}
-	return 0
 }

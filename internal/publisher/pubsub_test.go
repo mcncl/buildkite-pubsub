@@ -8,6 +8,7 @@ import (
 	"cloud.google.com/go/pubsub/pstest"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func TestPubSubPublisher(t *testing.T) {
@@ -18,7 +19,7 @@ func TestPubSubPublisher(t *testing.T) {
 	defer srv.Close()
 
 	// Connect to the server
-	conn, err := grpc.Dial(srv.Addr, grpc.WithInsecure())
+	conn, err := grpc.NewClient(srv.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		t.Fatalf("grpc.Dial: %v", err)
 	}

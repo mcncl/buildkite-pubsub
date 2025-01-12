@@ -87,9 +87,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if eventType == "ping" {
 		metrics.WebhookRequestsTotal.WithLabelValues("200", eventType).Inc()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
+		err := json.NewEncoder(w).Encode(map[string]string{
 			"message": "Pong! Webhook received successfully",
 		})
+		if err != nil {
+			metrics.ErrorsTotal.WithLabelValues("json_encode_error").Inc()
+			http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -144,8 +148,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Return success response
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	err = json.NewEncoder(w).Encode(map[string]string{
 		"message":    "Event published successfully",
 		"message_id": msgID,
 	})
+	if err != nil {
+		metrics.ErrorsTotal.WithLabelValues("json_encode_error").Inc()
+		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
+	}
 }

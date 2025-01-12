@@ -1,10 +1,7 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.23 AS builder
 
 WORKDIR /app
-
-# Install build dependencies
-RUN apk add --no-cache git
 
 # Copy go mod files
 COPY go.mod go.sum ./
@@ -13,8 +10,8 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build
-RUN CGO_ENABLED=0 GOOS=linux go build -o webhook cmd/webhook/main.go
+# Build with explicit architecture
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o webhook cmd/webhook/main.go
 
 # Final stage
 FROM alpine:3.18
@@ -30,6 +27,9 @@ COPY --from=builder /app/webhook .
 # Run as non-root user
 RUN adduser -D -g '' appuser
 USER appuser
+
+# Environment variable for the port
+ENV PORT=8080
 
 # Expose port
 EXPOSE 8080
