@@ -26,7 +26,10 @@ services:
       service: dev
     command: gofumpt -l .
 
+  # Production application service - only used for local development of the app itself
   app:
+    profiles:
+      - app
     build:
       context: .
       dockerfile: Dockerfile
@@ -37,11 +40,14 @@ services:
       - PROJECT_ID
       - TOPIC_ID
       - BUILDKITE_WEBHOOK_TOKEN
+      - GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials.json
     volumes:
       - ${GOOGLE_APPLICATION_CREDENTIALS:-}:/tmp/credentials.json:ro
-    command: ["--credentials-file=/tmp/credentials.json"]
 
+  # Release tooling
   goreleaser:
+    profiles:
+      - release
     image: goreleaser/goreleaser:latest
     volumes:
       - .:/app
