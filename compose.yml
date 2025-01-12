@@ -1,0 +1,51 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+      - go-cache:/go
+    environment:
+      - CGO_ENABLED=0
+      - GOCACHE=/go/cache
+      - GOMODCACHE=/go/mod
+
+  test:
+    extends: 
+      service: dev
+    command: go test -v -race -coverprofile=/app/coverage.txt -covermode=atomic ./...
+
+  lint:
+    extends:
+      service: dev
+    command: golangci-lint run --timeout=5m
+
+  fmt:
+    extends:
+      service: dev
+    command: gofumpt -l .
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - PROJECT_ID
+      - TOPIC_ID
+      - BUILDKITE_WEBHOOK_TOKEN
+    volumes:
+      - ${GOOGLE_APPLICATION_CREDENTIALS:-}:/tmp/credentials.json:ro
+    command: ["--credentials-file=/tmp/credentials.json"]
+
+  goreleaser:
+    image: goreleaser/goreleaser:latest
+    volumes:
+      - .:/app
+    working_dir: /app
+
+volumes:
+  go-cache:

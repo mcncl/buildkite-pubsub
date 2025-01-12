@@ -1,0 +1,17 @@
+FROM golang:1.23
+
+# Install development tools
+RUN go install mvdan.cc/gofumpt@latest && \
+    go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.63.4
+
+WORKDIR /app
+
+# Pre-copy/cache go.mod for pre-downloading dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Default to running tests
+CMD ["go", "test", "-v", "./..."]
