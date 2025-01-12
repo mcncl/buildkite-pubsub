@@ -114,7 +114,9 @@ func TestTracingMiddleware(t *testing.T) {
 	if err := provider.Start(ctx); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
-	defer provider.Shutdown(ctx)
+	if err := provider.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
 
 	tests := []struct {
 		name          string
@@ -198,7 +200,11 @@ func TestResponseWriter(t *testing.T) {
 			}
 
 			if tt.writeBody != "" {
-				rw.Write([]byte(tt.writeBody))
+				_, err := rw.Write([]byte(tt.writeBody))
+				if err != nil {
+					t.Errorf("Write() error = %v", err)
+				}
+
 				if w.Body.String() != tt.writeBody {
 					t.Errorf("got body %q, want %q", w.Body.String(), tt.writeBody)
 				}

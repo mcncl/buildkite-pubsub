@@ -88,7 +88,10 @@ func TestIPAllowList(t *testing.T) {
 func TestIPAllowListConcurrency(t *testing.T) {
 	// Initialize metrics for tests
 	reg := prometheus.NewRegistry()
-	metrics.InitMetrics(reg)
+	err := metrics.InitMetrics(reg)
+	if err != nil {
+		t.Fatalf("failed to initialize metrics: %v", err)
+	}
 
 	wl := &IPAllowList{
 		allowedIPs: map[string]struct{}{

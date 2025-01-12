@@ -4,9 +4,9 @@ import (
 	"log"
 	"net/http"
 	"time"
-)
 
-type contextKey string
+	"github.com/mcncl/buildkite-pubsub/internal/middleware/request"
+)
 
 // LogEntry represents a log entry for a request
 type LogEntry struct {
@@ -49,7 +49,7 @@ func WithLogging(next http.Handler) http.Handler {
 
 // getRequestID retrieves request ID from context
 func getRequestID(r *http.Request) string {
-	if id := r.Context().Value("requestID"); id != nil {
+	if id := r.Context().Value(request.RequestIDKey); id != nil {
 		return id.(string)
 	}
 	return "unknown"

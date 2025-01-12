@@ -10,7 +10,10 @@ import (
 func TestMetricsRecording(t *testing.T) {
 	// Initialize test registry
 	reg := prometheus.NewRegistry()
-	InitMetrics(reg)
+	err := InitMetrics(reg)
+	if err != nil {
+		t.Fatalf("failed to initialize metrics: %v", err)
+	}
 
 	tests := []struct {
 		name       string
@@ -104,7 +107,10 @@ func TestMetricsRecording(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset registry for each test
 			reg = prometheus.NewRegistry()
-			InitMetrics(reg)
+			err := InitMetrics(reg)
+			if err != nil {
+				t.Fatalf("failed to initialize metrics: %v", err)
+			}
 
 			// Record metric
 			tt.recordFunc()

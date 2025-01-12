@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/mcncl/buildkite-pubsub/internal/middleware/request"
 )
 
 func TestWithLogging(t *testing.T) {
@@ -71,7 +73,7 @@ func TestWithLogging(t *testing.T) {
 
 			req := httptest.NewRequest(tt.method, tt.path, nil)
 			if tt.requestID != "" {
-				ctx := context.WithValue(req.Context(), contextKey("requestID"), tt.requestID)
+				ctx := context.WithValue(req.Context(), request.RequestIDKey, tt.requestID)
 				req = req.WithContext(ctx)
 			}
 
@@ -118,7 +120,7 @@ func TestGetRequestID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			if tt.requestID != "" {
-				ctx := context.WithValue(req.Context(), contextKey("requestID"), tt.requestID)
+				ctx := context.WithValue(req.Context(), request.RequestIDKey, tt.requestID)
 				req = req.WithContext(ctx)
 			}
 
