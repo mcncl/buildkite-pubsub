@@ -1,202 +1,232 @@
 # Google Cloud Setup Guide
 
-This guide walks through setting up Google Cloud Project access for the Buildkite Webhook service. It covers creating a service account with the minimum required permissions.
+Deploy the Buildkite PubSub Webhook service to Google Cloud Platform.
 
 ## Prerequisites
 
-- [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) installed
-- Access to a Google Cloud Project with owner or security admin permissions
-- Project ID where you want to deploy the webhook service
+- [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
+- A Google Cloud Project with billing enabled
+- Project Owner or Editor role
 
-## Service Account Setup
+## Part 1: Basic GCP Setup
 
-### 1. Set Environment Variables
+### 1. Configure Project
 
 ```bash
-# Set your project ID
+# Set project ID
 export PROJECT_ID="your-project-id"
+gcloud config set project $PROJECT_ID
+
+# Enable required APIs
+gcloud services enable \
+  pubsub.googleapis.com \
+  container.googleapis.com \
+  monitoring.googleapis.com \
+  run.googleapis.com \
+  cloudbuild.googleapis.com
 ```
 
 ### 2. Create Service Account
 
 ```bash
-# Create a new service account for the webhook service
+# Create service account
 gcloud iam service-accounts create buildkite-webhook \
-    --description="Service account for Buildkite webhook" \
-    --display-name="Buildkite Webhook"
-```
+  --description="Service account for Buildkite webhook" \
+  --display-name="Buildkite Webhook"
 
-### 3. Grant Required Permissions
-
-#### Option A: Using Predefined Roles (Recommended for most users)
-
-```bash
-# For publishing messages only
+# Grant permissions
 gcloud projects add-iam-policy-binding $PROJECT_ID \
-    --member="serviceAccount:buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com" \
-    --role="roles/pubsub.publisher"
+  --member="serviceAccount:buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/pubsub.publisher"
 
-# Optional: For full Pub/Sub management (including topic creation)
-# Only needed if you want the service to create topics automatically
 gcloud projects add-iam-policy-binding $PROJECT_ID \
-    --member="serviceAccount:buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com" \
-    --role="roles/pubsub.admin"
-```
+  --member="serviceAccount:buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/monitoring.metricWriter"
 
-#### Option B: Using Custom Role (More restrictive)
-
-```bash
-# Create a custom role with minimal permissions
-gcloud iam roles create buildkite_webhook \
-    --project=$PROJECT_ID \
-    --title="Buildkite Webhook" \
-    --description="Custom role for Buildkite webhook service" \
-    --permissions="pubsub.topics.publish,pubsub.topics.get"
-
-# Assign the custom role to the service account
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-    --member="serviceAccount:buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com" \
-    --role="projects/$PROJECT_ID/roles/buildkite_webhook"
-```
-
-### 4. Create and Download Credentials
-
-```bash
-# Create and download the service account key
+# Download credentials (for local testing)
 gcloud iam service-accounts keys create credentials.json \
-    --iam-account=buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com
+  --iam-account=buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com
 ```
 
-### 5. Verify Setup
+### 3. Set Up Pub/Sub
 
 ```bash
-# List service account's IAM policy bindings
-gcloud projects get-iam-policy $PROJECT_ID \
-    --flatten="bindings[].members" \
-    --format='table(bindings.role)' \
-    --filter="bindings.members:buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com"
+# Create topic
+export TOPIC_ID="buildkite-events"
+gcloud pubsub topics create $TOPIC_ID
 
-# Verify the credentials file exists
-ls -l credentials.json
+# Create subscription for testing
+gcloud pubsub subscriptions create buildkite-events-sub \
+  --topic $TOPIC_ID \
+  --message-retention-duration="7d"
 ```
 
-# Development Workflow
-
-## Development Environment Setup
-
-When developing locally, you'll want to verify your GCP configuration before starting the Kubernetes deployment:
-
-### 1. Configure Development Project
+### 4. Store Webhook Token
 
 ```bash
-# Set default project for development
-gcloud config set project $PROJECT_ID
+# Create secret for webhook token
+echo -n "your-webhook-token" | \
+  gcloud secrets create buildkite-webhook-token \
+  --data-file=- \
+  --replication-policy="automatic"
 
-# Enable required APIs if not already enabled
-gcloud services enable \
-    pubsub.googleapis.com \
-    monitoring.googleapis.com
+# Grant access to the service account
+gcloud secrets add-iam-policy-binding buildkite-webhook-token \
+  --member="serviceAccount:buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
 ```
 
-### 2. Development Topic Setup
+## Part 2: Cloud Run Deployment
 
-For development, create a separate topic to avoid interfering with production:
+### 1. Build and Push Image
 
 ```bash
-# Create development topic
-gcloud pubsub topics create buildkite-events-dev
+# Build using Cloud Build
+gcloud builds submit --tag gcr.io/$PROJECT_ID/buildkite-webhook
 
-# Create test subscription for development
-gcloud pubsub subscriptions create buildkite-events-dev-sub \
-    --topic buildkite-events-dev \
-    --message-retention-duration=1d \
-    --expiration-period=7d
+# Verify image
+gcloud container images list-tags gcr.io/$PROJECT_ID/buildkite-webhook
 ```
 
-### 3. Local Environment Configuration
-
-Set up your local environment for development:
+### 2. Deploy to Cloud Run
 
 ```bash
-# Configure credentials for local development
-export GOOGLE_APPLICATION_CREDENTIALS="$(pwd)/credentials.json"
-export PROJECT_ID="your-project-id"
-export TOPIC_ID="buildkite-events-dev"  # Use development topic
+# Deploy the service
+gcloud run deploy buildkite-webhook \
+  --image gcr.io/$PROJECT_ID/buildkite-webhook \
+  --platform managed \
+  --region australia-southeast2 \
+  --allow-unauthenticated \
+  --service-account buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com \
+  --set-env-vars="PROJECT_ID=$PROJECT_ID,TOPIC_ID=buildkite-events,ENABLE_METRICS=true,PROMETHEUS_NAMESPACE=buildkite" \
+  --set-secrets="BUILDKITE_WEBHOOK_TOKEN=buildkite-webhook-token:latest"
+
+# Get the service URL
+export SERVICE_URL=$(gcloud run services describe buildkite-webhook \
+  --platform managed \
+  --region australia-southeast2 \
+  --format='get(status.url)')
 ```
 
-### 4. Running Integration Tests
-
-Before deploying to Kubernetes, validate your setup with integration tests:
+### 3. Test Cloud Run Deployment
 
 ```bash
-# Run integration tests (requires valid credentials and development topic)
-go test ./... -tags=integration
+# Send test webhook
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-Buildkite-Token: your-webhook-token" \
+  "$SERVICE_URL/webhook" \
+  -d '{"event":"ping"}'
+
+# Check messages
+gcloud pubsub subscriptions pull buildkite-events-sub --auto-ack
 ```
 
-### Development vs Production Settings
+## Part 3: GKE Deployment (Optional)
 
-| Setting | Development | Production |
-|---------|-------------|------------|
-| Topic Name | buildkite-events-dev | buildkite-events |
-| Permissions | pubsub.publisher | Custom role or pubsub.admin |
-| Monitoring | Basic metrics | Full monitoring stack |
-| Retention | 1-7 days | Based on business needs |
+If you need more control over your deployment or want to run alongside other services, you can deploy to GKE:
 
-### Transitioning to Production
-
-When moving to production:
-
-1. Create separate service accounts for dev and prod
-2. Use more restrictive permissions in production
-3. Enable audit logging for production topics
-4. Set up appropriate retention policies
-5. Configure monitoring and alerting
-
-## Security Considerations
-
-1. **Key Rotation**: Consider implementing regular key rotation for the service account
-2. **Minimal Permissions**: The custom role option provides the most restrictive set of permissions
-3. **Key Storage**: Store the credentials.json file securely and never commit it to version control
-
-## Common Issues
-
-1. **Permission Denied Errors**:
-   - Verify the service account has the correct roles assigned
-   - Check that the credentials file is mounted correctly in the pod
-   - Ensure the PROJECT_ID matches the one where permissions were granted
-
-2. **Missing Permissions**:
-   ```bash
-   # Check effective permissions for the service account
-   gcloud iam service-accounts get-iam-policy \
-       buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com
-   ```
-
-3. **Invalid Credentials**:
-   - Verify the credentials file is valid JSON
-   - Check the file permissions in the pod
-   - Ensure GOOGLE_APPLICATION_CREDENTIALS is set correctly
-
-## Next Steps
-
-After completing this setup:
-
-1. Store the credentials.json file securely
-2. Follow the [Quick Start Guide](QUICK_START.md) to deploy the webhook service
-3. Consider setting up monitoring for the service account's activity
-
-## Cleanup
-
-If you need to remove the service account:
+### 1. Create GKE Cluster
 
 ```bash
-# Delete the service account
+# Create cluster
+gcloud container clusters create buildkite-webhook \
+  --machine-type=e2-standard-2 \
+  --num-nodes=2 \
+  --zone=us-central1-a \
+  --workload-pool=$PROJECT_ID.svc.id.goog
+
+# Get credentials
+gcloud container clusters get-credentials buildkite-webhook \
+  --zone=us-central1-a
+```
+
+### 2. Configure Workload Identity
+
+```bash
+# Create namespace
+kubectl create namespace buildkite-webhook
+
+# Create Kubernetes service account
+kubectl create serviceaccount buildkite-webhook \
+  --namespace buildkite-webhook
+
+# Configure workload identity binding
+gcloud iam service-accounts add-iam-policy-binding \
+  buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com \
+  --role roles/iam.workloadIdentityUser \
+  --member "serviceAccount:$PROJECT_ID.svc.id.goog[buildkite-webhook/buildkite-webhook]"
+
+kubectl annotate serviceaccount buildkite-webhook \
+  --namespace buildkite-webhook \
+  iam.gke.io/gcp-service-account=buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com
+```
+
+### 3. Deploy to GKE
+
+```bash
+# Create ConfigMap
+kubectl create configmap buildkite-webhook-config \
+  --namespace buildkite-webhook \
+  --from-literal=project_id="$PROJECT_ID" \
+  --from-literal=topic_id="$TOPIC_ID"
+
+# Create secret for webhook token
+kubectl create secret generic buildkite-webhook-secrets \
+  --namespace buildkite-webhook \
+  --from-literal=buildkite-token="your-webhook-token"
+
+# Deploy application
+kubectl apply -f k8s/webhook/
+
+# Create static IP for ingress
+gcloud compute addresses create buildkite-webhook \
+  --global
+
+# Note the IP address
+export WEBHOOK_IP=$(gcloud compute addresses describe buildkite-webhook \
+  --global --format='get(address)')
+
+# Deploy ingress (after configuring DNS)
+kubectl apply -f k8s/ingress/
+```
+
+## Cleaning Up
+
+### Cloud Run Cleanup
+```bash
+# Delete Cloud Run service
+gcloud run services delete buildkite-webhook \
+  --platform managed \
+  --region australia-southeast2
+
+# Delete container image
+gcloud container images delete gcr.io/$PROJECT_ID/buildkite-webhook --force-delete-tags
+```
+
+### GKE Cleanup
+```bash
+# Delete GKE resources
+kubectl delete namespace buildkite-webhook
+
+# Delete cluster
+gcloud container clusters delete buildkite-webhook \
+  --zone=us-central1-a
+
+# Delete static IP
+gcloud compute addresses delete buildkite-webhook --global
+```
+
+### Common Resources Cleanup
+```bash
+# Delete Pub/Sub resources
+gcloud pubsub subscriptions delete buildkite-events-sub
+gcloud pubsub topics delete $TOPIC_ID
+
+# Delete secrets
+gcloud secrets delete buildkite-webhook-token
+
+# Delete service account
 gcloud iam service-accounts delete \
-    buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com
-
-# If you created a custom role, delete it
-gcloud iam roles delete buildkite_webhook --project=$PROJECT_ID
-
-# Remove the credentials file
-rm credentials.json
+  buildkite-webhook@$PROJECT_ID.iam.gserviceaccount.com
 ```
