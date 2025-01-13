@@ -80,6 +80,78 @@ gcloud projects get-iam-policy $PROJECT_ID \
 ls -l credentials.json
 ```
 
+# Development Workflow
+
+## Development Environment Setup
+
+When developing locally, you'll want to verify your GCP configuration before starting the Kubernetes deployment:
+
+### 1. Configure Development Project
+
+```bash
+# Set default project for development
+gcloud config set project $PROJECT_ID
+
+# Enable required APIs if not already enabled
+gcloud services enable \
+    pubsub.googleapis.com \
+    monitoring.googleapis.com
+```
+
+### 2. Development Topic Setup
+
+For development, create a separate topic to avoid interfering with production:
+
+```bash
+# Create development topic
+gcloud pubsub topics create buildkite-events-dev
+
+# Create test subscription for development
+gcloud pubsub subscriptions create buildkite-events-dev-sub \
+    --topic buildkite-events-dev \
+    --message-retention-duration=1d \
+    --expiration-period=7d
+```
+
+### 3. Local Environment Configuration
+
+Set up your local environment for development:
+
+```bash
+# Configure credentials for local development
+export GOOGLE_APPLICATION_CREDENTIALS="$(pwd)/credentials.json"
+export PROJECT_ID="your-project-id"
+export TOPIC_ID="buildkite-events-dev"  # Use development topic
+```
+
+### 4. Running Integration Tests
+
+Before deploying to Kubernetes, validate your setup with integration tests:
+
+```bash
+# Run integration tests (requires valid credentials and development topic)
+go test ./... -tags=integration
+```
+
+### Development vs Production Settings
+
+| Setting | Development | Production |
+|---------|-------------|------------|
+| Topic Name | buildkite-events-dev | buildkite-events |
+| Permissions | pubsub.publisher | Custom role or pubsub.admin |
+| Monitoring | Basic metrics | Full monitoring stack |
+| Retention | 1-7 days | Based on business needs |
+
+### Transitioning to Production
+
+When moving to production:
+
+1. Create separate service accounts for dev and prod
+2. Use more restrictive permissions in production
+3. Enable audit logging for production topics
+4. Set up appropriate retention policies
+5. Configure monitoring and alerting
+
 ## Security Considerations
 
 1. **Key Rotation**: Consider implementing regular key rotation for the service account
