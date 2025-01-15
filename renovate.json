@@ -1,29 +1,44 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:base"
+    "config:recommended"
   ],
   "packageRules": [
     {
-      "matchPackagePatterns": ["^k8s.io", "^google.golang.org", "^cloud.google.com"],
-      "groupName": "google cloud dependencies",
-      "labels": ["cloud-deps"]
+      "matchCategories": [
+        "docker"
+      ],
+      "enabled": true,
+      "pinDigests": true
     },
     {
-      "matchPackagePatterns": ["^github.com/prometheus"],
+      "groupName": "google cloud dependencies",
+      "labels": [
+        "cloud-deps"
+      ],
+      "matchPackageNames": [
+        "/^k8s.io/",
+        "/^google.golang.org/",
+        "/^cloud.google.com/"
+      ]
+    },
+    {
       "groupName": "prometheus dependencies",
-      "labels": ["monitoring-deps"]
+      "labels": [
+        "monitoring-deps"
+      ],
+      "matchPackageNames": [
+        "/^github.com/prometheus/"
+      ]
     }
   ],
   "kubernetes": {
-    "fileMatch": ["\\.yaml$"],
+    "fileMatch": [
+      "\\.yaml$"
+    ],
     "ignorePaths": [
       "k8s/monitoring/**"
     ]
-  },
-  "docker": {
-    "enabled": true,
-    "pinDigests": true
   },
   "gomod": {
     "enabled": true
