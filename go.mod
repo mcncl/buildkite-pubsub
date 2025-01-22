@@ -13,7 +13,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.34.0
 	go.opentelemetry.io/otel/trace v1.34.0
 	golang.org/x/time v0.9.0
-	google.golang.org/api v0.217.0
+	google.golang.org/api v0.218.0
 	google.golang.org/grpc v1.69.4
 )
 
