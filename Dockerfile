@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.23@sha256:436d2324f91930ed16cb6cddf109bf90c3541de23f1cd1483267f7e85084a611 AS builder
+FROM golang:1.23@sha256:927112936d6b496ed95f55f362cc09da6e3e624ef868814c56d55bd7323e0959 AS builder
 
 WORKDIR /app
 
