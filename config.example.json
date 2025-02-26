@@ -1,0 +1,47 @@
+{
+  "gcp": {
+    "project_id": "your-project-id",
+    "topic_id": "buildkite-events",
+    "credentials_file": "credentials.json",
+    "enable_tracing": false,
+    "otlp_endpoint": "localhost:4317",
+    "trace_sampling_ratio": 0.1,
+    "pubsub_batch_size": 100,
+    "pubsub_retry_max_attempts": 5
+  },
+  "webhook": {
+    "token": "your-webhook-token",
+    "path": "/webhook",
+    "enable_ip_allowlist": false,
+    "ip_allowlist_refresh_token": "",
+    "ip_allowlist_refresh_interval": 60
+  },
+  "server": {
+    "port": 8080,
+    "log_level": "info",
+    "max_request_size": 1048576,
+    "request_timeout": 30,
+    "read_timeout": 5,
+    "write_timeout": 10,
+    "idle_timeout": 120
+  },
+  "security": {
+    "rate_limit": 60,
+    "ip_rate_limit": 30,
+    "allowed_origins": ["*"],
+    "allowed_methods": ["POST", "OPTIONS"],
+    "allowed_headers": [
+      "Accept",
+      "Content-Type",
+      "Content-Length",
+      "Accept-Encoding",
+      "Authorization",
+      "X-CSRF-Token",
+      "X-Buildkite-Token",
+      "X-Request-ID"
+    ],
+    "enable_csrf_protection": false,
+    "csrf_cookie_name": "csrf_token",
+    "csrf_header_name": "X-CSRF-Token"
+  }
+}

@@ -2,13 +2,15 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
+	"github.com/mcncl/buildkite-pubsub/internal/config"
 	"github.com/mcncl/buildkite-pubsub/internal/errors"
 	"github.com/mcncl/buildkite-pubsub/internal/metrics"
 	"github.com/mcncl/buildkite-pubsub/internal/middleware/logging"
@@ -21,6 +23,19 @@ import (
 )
 
 func main() {
+	// Parse command line flags
+	configFile := flag.String("config", "", "Path to configuration file (JSON or YAML)")
+	flag.Parse()
+
+	// Load configuration
+	cfg, err := config.Load(*configFile, nil)
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+
+	// Log the configuration (with sensitive values masked)
+	log.Printf("Configuration loaded: %s", cfg)
+
 	ctx := context.Background()
 
 	// Initialize health checker
@@ -32,24 +47,8 @@ func main() {
 		log.Fatalf("Failed to initialize metrics: %v", err)
 	}
 
-	// Get required environment variables
-	projectID := os.Getenv("PROJECT_ID")
-	topicID := os.Getenv("TOPIC_ID")
-	webhookToken := os.Getenv("BUILDKITE_WEBHOOK_TOKEN")
-
-	// Validate required environment variables
-	if projectID == "" || topicID == "" || webhookToken == "" {
-		err := errors.NewValidationError("missing required environment variables")
-		err = errors.WithDetails(err, map[string]interface{}{
-			"project_id_set":        projectID != "",
-			"topic_id_set":          topicID != "",
-			"buildkite_webhook_set": webhookToken != "",
-		})
-		log.Fatalf("Configuration error: %s", errors.Format(err))
-	}
-
 	// Create publisher
-	pub, err := publisher.NewPubSubPublisher(ctx, projectID, topicID)
+	pub, err := publisher.NewPubSubPublisher(ctx, cfg.GCP.ProjectID, cfg.GCP.TopicID)
 	if err != nil {
 		// Wrap the error with additional context
 		if errors.IsConnectionError(err) {
@@ -59,8 +58,8 @@ func main() {
 		}
 
 		err = errors.WithDetails(err, map[string]interface{}{
-			"project_id": projectID,
-			"topic_id":   topicID,
+			"project_id": cfg.GCP.ProjectID,
+			"topic_id":   cfg.GCP.TopicID,
 		})
 
 		log.Fatalf("Publisher initialization error: %s", errors.Format(err))
@@ -69,7 +68,7 @@ func main() {
 
 	// Create webhook handler
 	webhookHandler := webhook.NewHandler(webhook.Config{
-		BuildkiteToken: webhookToken,
+		BuildkiteToken: cfg.Webhook.Token,
 		Publisher:      pub,
 	})
 
@@ -83,32 +82,38 @@ func main() {
 	mux.HandleFunc("/health", healthCheck.HealthHandler)
 	mux.HandleFunc("/ready", healthCheck.ReadyHandler)
 
-	securityConfig := security.DefaultConfig()
+	// Create security configuration
+	securityConfig := security.SecurityConfig{
+		AllowedOrigins: cfg.Security.AllowedOrigins,
+		AllowedMethods: cfg.Security.AllowedMethods,
+		AllowedHeaders: cfg.Security.AllowedHeaders,
+		MaxAge:         3600,
+	}
 
 	// Add webhook route with middleware
 	// Note: The order of middleware is important!
-	mux.Handle("/webhook", chainMiddleware(
+	mux.Handle(cfg.Webhook.Path, chainMiddleware(
 		webhookHandler,
 		request.WithRequestID, // Generate request ID first
 		logging.WithLogging,   // Add logging early for all requests
 		security.WithSecurityHeaders(securityConfig),
-		security.WithRateLimit(60),          // Rate limiting before timeout
-		security.WithIPRateLimit(30),        // IP-based rate limiting
-		request.WithTimeout(30*time.Second), // Timeout last
+		security.WithRateLimit(cfg.Security.RateLimit),     // Rate limiting before timeout
+		security.WithIPRateLimit(cfg.Security.IPRateLimit), // IP-based rate limiting
+		request.WithTimeout(cfg.Server.RequestTimeout),     // Timeout last
 	))
 
 	// Configure server
 	srv := &http.Server{
-		Addr:         ":" + getPort(),
+		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
 		Handler:      mux,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+		IdleTimeout:  cfg.Server.IdleTimeout,
 	}
 
 	// Start server in goroutine
 	go func() {
-		log.Printf("Server starting on port %s", getPort())
+		log.Printf("Server starting on port %d", cfg.Server.Port)
 		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 			log.Fatalf("HTTP server error: %v", err)
 		}
@@ -124,7 +129,7 @@ func main() {
 
 	// Graceful shutdown
 	log.Println("Shutting down server...")
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.RequestTimeout)
 	defer cancel()
 
 	healthCheck.SetReady(false)
