@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"log"
 	"net/http"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mcncl/buildkite-pubsub/internal/errors"
 	"github.com/mcncl/buildkite-pubsub/internal/metrics"
 	"github.com/mcncl/buildkite-pubsub/internal/middleware/logging"
 	"github.com/mcncl/buildkite-pubsub/internal/middleware/request"
@@ -26,25 +26,50 @@ func main() {
 	// Initialize health checker
 	healthCheck := webhook.NewHealthCheck()
 
-	// Add metrics initialisation
+	// Add metrics initialization
 	reg := prometheus.NewRegistry()
 	if err := metrics.InitMetrics(reg); err != nil {
 		log.Fatalf("Failed to initialize metrics: %v", err)
 	}
 
+	// Get required environment variables
+	projectID := os.Getenv("PROJECT_ID")
+	topicID := os.Getenv("TOPIC_ID")
+	webhookToken := os.Getenv("BUILDKITE_WEBHOOK_TOKEN")
+
+	// Validate required environment variables
+	if projectID == "" || topicID == "" || webhookToken == "" {
+		err := errors.NewValidationError("missing required environment variables")
+		err = errors.WithDetails(err, map[string]interface{}{
+			"project_id_set":        projectID != "",
+			"topic_id_set":          topicID != "",
+			"buildkite_webhook_set": webhookToken != "",
+		})
+		log.Fatalf("Configuration error: %s", errors.Format(err))
+	}
+
 	// Create publisher
-	pub, err := publisher.NewPubSubPublisher(ctx,
-		os.Getenv("PROJECT_ID"),
-		os.Getenv("TOPIC_ID"),
-	)
+	pub, err := publisher.NewPubSubPublisher(ctx, projectID, topicID)
 	if err != nil {
-		log.Fatalf("Failed to create publisher: %v", err)
+		// Wrap the error with additional context
+		if errors.IsConnectionError(err) {
+			err = errors.Wrap(err, "failed to connect to Google Cloud Pub/Sub")
+		} else {
+			err = errors.Wrap(err, "failed to create publisher")
+		}
+
+		err = errors.WithDetails(err, map[string]interface{}{
+			"project_id": projectID,
+			"topic_id":   topicID,
+		})
+
+		log.Fatalf("Publisher initialization error: %s", errors.Format(err))
 	}
 	defer pub.Close()
 
 	// Create webhook handler
 	webhookHandler := webhook.NewHandler(webhook.Config{
-		BuildkiteToken: os.Getenv("BUILDKITE_WEBHOOK_TOKEN"),
+		BuildkiteToken: webhookToken,
 		Publisher:      pub,
 	})
 
@@ -61,14 +86,15 @@ func main() {
 	securityConfig := security.DefaultConfig()
 
 	// Add webhook route with middleware
+	// Note: The order of middleware is important!
 	mux.Handle("/webhook", chainMiddleware(
 		webhookHandler,
-		request.WithRequestID,
-		request.WithTimeout(30*time.Second),
+		request.WithRequestID, // Generate request ID first
+		logging.WithLogging,   // Add logging early for all requests
 		security.WithSecurityHeaders(securityConfig),
-		security.WithRateLimit(60),
-		security.WithIPRateLimit(30),
-		logging.WithLogging,
+		security.WithRateLimit(60),          // Rate limiting before timeout
+		security.WithIPRateLimit(30),        // IP-based rate limiting
+		request.WithTimeout(30*time.Second), // Timeout last
 	))
 
 	// Configure server
@@ -78,18 +104,6 @@ func main() {
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
-		TLSConfig: &tls.Config{
-			MinVersion:               tls.VersionTLS12,
-			PreferServerCipherSuites: true,
-			CipherSuites: []uint16{
-				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
-				tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
-				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-			},
-		},
 	}
 
 	// Start server in goroutine
@@ -126,9 +140,9 @@ func getPort() string {
 	return "8080"
 }
 
-// Middleware chain helper
+// Middleware chain helper - applies middleware in reverse order
+// so they execute in the order they're passed
 func chainMiddleware(handler http.Handler, middlewares ...func(http.Handler) http.Handler) http.Handler {
-	// Apply middleware in reverse order so they execute in the order they're passed
 	for i := len(middlewares) - 1; i >= 0; i-- {
 		handler = middlewares[i](handler)
 	}

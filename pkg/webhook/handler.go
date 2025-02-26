@@ -3,15 +3,24 @@ package webhook
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"time"
 
 	"github.com/mcncl/buildkite-pubsub/internal/buildkite"
+	"github.com/mcncl/buildkite-pubsub/internal/errors"
 	"github.com/mcncl/buildkite-pubsub/internal/metrics"
 	"github.com/mcncl/buildkite-pubsub/internal/publisher"
 )
+
+// ErrorResponse represents a standardized error response
+type ErrorResponse struct {
+	Status     string      `json:"status"`
+	Message    string      `json:"message"`
+	ErrorType  string      `json:"error_type"`
+	RetryAfter int         `json:"retry_after,omitempty"`
+	Details    interface{} `json:"details,omitempty"`
+}
 
 // Config holds the configuration for the webhook handler
 type Config struct {
@@ -37,28 +46,45 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	var eventType string = "unknown"
 
+	// Track the request in metrics
+	defer func() {
+		metrics.WebhookRequestDuration.WithLabelValues(eventType).Observe(time.Since(start).Seconds())
+	}()
+
 	if r.Method != http.MethodPost {
-		metrics.WebhookRequestsTotal.WithLabelValues("405", eventType).Inc()
+		// Special case for method not allowed - use specific HTTP status code
 		metrics.ErrorsTotal.WithLabelValues("method_not_allowed").Inc()
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		metrics.WebhookRequestsTotal.WithLabelValues("405", eventType).Inc()
+
+		response := ErrorResponse{
+			Status:    "error",
+			Message:   "Method not allowed, only POST is supported",
+			ErrorType: "validation",
+			Details: map[string]interface{}{
+				"method": r.Method,
+				"path":   r.URL.Path,
+			},
+		}
+
+		h.sendJSONResponse(w, http.StatusMethodNotAllowed, response)
 		return
 	}
 
 	// Validate token first
 	if !h.validator.ValidateToken(r) {
+		err := errors.NewAuthError("invalid token")
 		metrics.AuthFailures.Inc()
-		metrics.WebhookRequestsTotal.WithLabelValues("401", eventType).Inc()
 		metrics.ErrorsTotal.WithLabelValues("auth_failure").Inc()
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		h.handleError(w, r, err, eventType)
 		return
 	}
 
 	// Read and measure the body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		metrics.WebhookRequestsTotal.WithLabelValues("400", eventType).Inc()
+		err = errors.Wrap(err, "failed to read request body")
 		metrics.ErrorsTotal.WithLabelValues("body_read_error").Inc()
-		http.Error(w, fmt.Sprintf("Failed to read body: %v", err), http.StatusBadRequest)
+		h.handleError(w, r, err, eventType)
 		return
 	}
 	r.Body = io.NopCloser(bytes.NewBuffer(body))
@@ -72,9 +98,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Parse payload
 	var payload buildkite.Payload
 	if err := json.Unmarshal(body, &payload); err != nil {
-		metrics.WebhookRequestsTotal.WithLabelValues("400", eventType).Inc()
+		err = errors.NewValidationError("failed to decode payload")
+		err = errors.WithDetails(err, map[string]interface{}{
+			"error":       err.Error(),
+			"body_length": len(body),
+		})
 		metrics.ErrorsTotal.WithLabelValues("json_decode_error").Inc()
-		http.Error(w, fmt.Sprintf("Failed to decode payload: %v", err), http.StatusBadRequest)
+		h.handleError(w, r, err, eventType)
 		return
 	}
 
@@ -86,23 +116,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Handle ping event specially
 	if eventType == "ping" {
 		metrics.WebhookRequestsTotal.WithLabelValues("200", eventType).Inc()
-		w.Header().Set("Content-Type", "application/json")
-		err := json.NewEncoder(w).Encode(map[string]string{
+		h.sendJSONResponse(w, http.StatusOK, map[string]string{
+			"status":  "success",
 			"message": "Pong! Webhook received successfully",
 		})
-		if err != nil {
-			metrics.ErrorsTotal.WithLabelValues("json_encode_error").Inc()
-			http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
-		}
 		return
 	}
 
 	// Transform payload
 	transformed, err := buildkite.Transform(payload)
 	if err != nil {
-		metrics.WebhookRequestsTotal.WithLabelValues("500", eventType).Inc()
+		err = errors.Wrap(err, "failed to transform payload")
 		metrics.ErrorsTotal.WithLabelValues("transform_error").Inc()
-		http.Error(w, fmt.Sprintf("Failed to transform payload: %v", err), http.StatusInternalServerError)
+		h.handleError(w, r, err, eventType)
 		return
 	}
 
@@ -135,25 +161,134 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metrics.PubsubPublishDuration.Observe(pubDuration)
 
 	if err != nil {
-		metrics.WebhookRequestsTotal.WithLabelValues("500", eventType).Inc()
-		metrics.PubsubPublishRequestsTotal.WithLabelValues("error", eventType).Inc()
+		// Classify and handle the publish error
+		var publishErr error
+		if errors.IsConnectionError(err) {
+			publishErr = errors.NewConnectionError("failed to connect to Pub/Sub")
+			metrics.PubsubPublishRequestsTotal.WithLabelValues("error", eventType).Inc()
+		} else if errors.IsRateLimitError(err) {
+			publishErr = err // Already a rate limit error
+			metrics.PubsubPublishRequestsTotal.WithLabelValues("rate_limit", eventType).Inc()
+		} else {
+			publishErr = errors.NewPublishError("failed to publish message", err)
+			metrics.PubsubPublishRequestsTotal.WithLabelValues("error", eventType).Inc()
+		}
+
+		// Add context information to the error
+		publishErr = errors.WithDetails(publishErr, map[string]interface{}{
+			"event_type":   eventType,
+			"payload_size": len(transformedJSON),
+			"build_id":     transformed.Build.ID,
+			"pipeline":     transformed.Build.Pipeline,
+		})
+
 		metrics.ErrorsTotal.WithLabelValues("publish_error").Inc()
-		http.Error(w, fmt.Sprintf("Failed to publish message: %v", err), http.StatusInternalServerError)
+		h.handleError(w, r, publishErr, eventType)
 		return
 	}
 
 	metrics.WebhookRequestsTotal.WithLabelValues("200", eventType).Inc()
 	metrics.PubsubPublishRequestsTotal.WithLabelValues("success", eventType).Inc()
-	metrics.WebhookRequestDuration.WithLabelValues(eventType).Observe(time.Since(start).Seconds())
 
 	// Return success response
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(map[string]string{
+	h.sendJSONResponse(w, http.StatusOK, map[string]interface{}{
+		"status":     "success",
 		"message":    "Event published successfully",
 		"message_id": msgID,
+		"event_type": eventType,
 	})
-	if err != nil {
+}
+
+// handleError processes errors and returns appropriate HTTP responses
+func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error, eventType string) {
+	// Always record error in metrics
+	metrics.WebhookRequestsTotal.WithLabelValues(h.getStatusCodeForError(err), eventType).Inc()
+
+	var errorType string
+	var details interface{}
+
+	// Extract error details if available
+	details = errors.GetDetails(err)
+
+	// Create error response based on error type
+	response := ErrorResponse{
+		Status:  "error",
+		Message: errors.Format(err),
+	}
+
+	// Set error type and specific handling based on error type
+	switch {
+	case errors.IsAuthError(err):
+		errorType = "auth"
+		response.ErrorType = errorType
+		h.sendJSONResponse(w, http.StatusUnauthorized, response)
+
+	case errors.IsValidationError(err):
+		errorType = "validation"
+		response.ErrorType = errorType
+		response.Details = details
+		h.sendJSONResponse(w, http.StatusBadRequest, response)
+
+	case errors.IsRateLimitError(err):
+		errorType = "rate_limit"
+		response.ErrorType = errorType
+		response.RetryAfter = 60 // Suggest retry after 60 seconds
+		h.sendJSONResponse(w, http.StatusTooManyRequests, response)
+
+	case errors.IsConnectionError(err):
+		errorType = "connection"
+		response.ErrorType = errorType
+		response.RetryAfter = 30 // Suggest retry after 30 seconds
+		h.sendJSONResponse(w, http.StatusServiceUnavailable, response)
+
+	case errors.IsPublishError(err):
+		errorType = "publish"
+		response.ErrorType = errorType
+		response.Details = details
+		h.sendJSONResponse(w, http.StatusInternalServerError, response)
+
+	default:
+		// Handle any other errors as internal errors
+		errorType = "internal"
+		response.ErrorType = errorType
+		h.sendJSONResponse(w, http.StatusInternalServerError, response)
+	}
+}
+
+// getStatusCodeForError returns an appropriate HTTP status code for an error
+func (h *Handler) getStatusCodeForError(err error) string {
+	switch {
+	case errors.IsAuthError(err):
+		return "401"
+	case errors.IsValidationError(err):
+		// Check for method not allowed
+		details := errors.GetDetails(err)
+		if details != nil {
+			if method, ok := details["method"]; ok {
+				if method != "POST" {
+					return "405"
+				}
+			}
+		}
+		return "400"
+	case errors.IsRateLimitError(err):
+		return "429"
+	case errors.IsConnectionError(err):
+		return "503"
+	case errors.IsPublishError(err):
+		return "500"
+	default:
+		return "500"
+	}
+}
+
+// sendJSONResponse sends a JSON response with the given status code
+func (h *Handler) sendJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		// If we can't encode the response, log it but there's not much we can do at this point
 		metrics.ErrorsTotal.WithLabelValues("json_encode_error").Inc()
-		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
 	}
 }

@@ -2,6 +2,7 @@ package errors
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -131,31 +132,6 @@ func TestErrorWrapping(t *testing.T) {
 	}
 }
 
-func TestErrorWithDetails(t *testing.T) {
-	baseErr := NewValidationError("invalid input")
-	detailedErr := WithDetails(baseErr, map[string]interface{}{
-		"field":  "username",
-		"reason": "too short",
-		"min":    5,
-	})
-
-	expectedDetails := `{"field":"username","min":5,"reason":"too short"}`
-	if !strings.Contains(detailedErr.Error(), expectedDetails) {
-		t.Errorf("error with details %q does not contain expected details %q", detailedErr.Error(), expectedDetails)
-	}
-
-	// Test that original error type is preserved
-	if !IsValidationError(detailedErr) {
-		t.Errorf("error type not preserved after adding details")
-	}
-
-	// Test with nil error
-	nilDetailed := WithDetails(nil, map[string]interface{}{"key": "value"})
-	if nilDetailed != nil {
-		t.Errorf("WithDetails(nil, ...) = %v, want nil", nilDetailed)
-	}
-}
-
 func TestErrorRetryable(t *testing.T) {
 	// Test making a non-retryable error retryable
 	nonRetryable := NewValidationError("invalid input")
@@ -203,5 +179,158 @@ func TestErrorFormatting(t *testing.T) {
 	nilFormatted := Format(nil)
 	if nilFormatted != "" {
 		t.Errorf("Format(nil) = %q, want empty string", nilFormatted)
+	}
+}
+
+func TestErrorWithDetails(t *testing.T) {
+	// Create an error with details
+	details := map[string]interface{}{
+		"field": "username",
+		"code":  123,
+	}
+
+	err := WithDetails(NewValidationError("invalid input"), details)
+
+	// Test that we can get the details back
+	if detailedErr, ok := err.(ErrorWithDetails); !ok {
+		t.Error("Error should implement ErrorWithDetails")
+	} else {
+		gotDetails := detailedErr.Details()
+		if !reflect.DeepEqual(gotDetails, details) {
+			t.Errorf("Details() = %v, want %v", gotDetails, details)
+		}
+	}
+
+	// Test with GetDetails helper
+	gotDetails := GetDetails(err)
+	if !reflect.DeepEqual(gotDetails, details) {
+		t.Errorf("GetDetails() = %v, want %v", gotDetails, details)
+	}
+
+	// Test with nil error
+	if GetDetails(nil) != nil {
+		t.Error("GetDetails(nil) should return nil")
+	}
+}
+
+func TestWithRetryOption(t *testing.T) {
+	// Create basic error
+	err := NewConnectionError("connection timeout")
+
+	// Add retry option
+	retryErr := WithRetryOption(err, 60)
+
+	// Test that we can get the retry option back
+	details := GetDetails(retryErr)
+	if details == nil {
+		t.Error("WithRetryOption should add details to error")
+	} else {
+		retryValue, ok := details["retry_after"]
+		if !ok {
+			t.Error("WithRetryOption should add retry_after to details")
+		} else if retryValue != 60 {
+			t.Errorf("retry_after = %v, want 60", retryValue)
+		}
+	}
+
+	// Test GetRetryOption helper
+	retrySeconds, ok := GetRetryOption(retryErr)
+	if !ok {
+		t.Error("GetRetryOption should return true for error with retry option")
+	} else if retrySeconds != 60 {
+		t.Errorf("GetRetryOption() = %v, want 60", retrySeconds)
+	}
+
+	// Test with nil error
+	if WithRetryOption(nil, 30) != nil {
+		t.Error("WithRetryOption(nil) should return nil")
+	}
+
+	// Test GetRetryOption with error without retry
+	if _, ok := GetRetryOption(NewAuthError("invalid token")); ok {
+		t.Error("GetRetryOption should return false for error without retry option")
+	}
+}
+
+func TestToErrorResponse(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		wantType  string
+		wantRetry bool
+	}{
+		{
+			name:      "auth error",
+			err:       NewAuthError("invalid token"),
+			wantType:  "auth",
+			wantRetry: false,
+		},
+		{
+			name:      "validation error",
+			err:       NewValidationError("invalid input"),
+			wantType:  "validation",
+			wantRetry: false,
+		},
+		{
+			name:      "rate limit error",
+			err:       NewRateLimitError("too many requests"),
+			wantType:  "rate_limit",
+			wantRetry: true,
+		},
+		{
+			name:      "connection error",
+			err:       NewConnectionError("connection timeout"),
+			wantType:  "connection",
+			wantRetry: true,
+		},
+		{
+			name:      "publish error",
+			err:       NewPublishError("publish failed", nil),
+			wantType:  "publish",
+			wantRetry: true,
+		},
+		{
+			name:      "error with retry option",
+			err:       WithRetryOption(NewValidationError("retry this"), 45),
+			wantType:  "validation",
+			wantRetry: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := ToErrorResponse(tt.err)
+
+			// Check error type
+			if resp.ErrorType != tt.wantType {
+				t.Errorf("ErrorType = %v, want %v", resp.ErrorType, tt.wantType)
+			}
+
+			// Check message contains error text
+			if resp.Message == "" {
+				t.Error("Message should not be empty")
+			}
+
+			// Check retry info
+			hasRetry := resp.RetryAfter > 0
+			if hasRetry != tt.wantRetry {
+				t.Errorf("hasRetry = %v, want %v", hasRetry, tt.wantRetry)
+			}
+
+			// For errors with specific retry values
+			if retryErr, ok := tt.err.(*errorType); ok && retryErr.details != nil {
+				if retry, ok := retryErr.details["retry_after"]; ok {
+					if resp.RetryAfter != retry {
+						t.Errorf("RetryAfter = %v, want %v", resp.RetryAfter, retry)
+					}
+				}
+			}
+		})
+	}
+
+	// Test with nil error
+	resp := ToErrorResponse(nil)
+	if resp.Status != "error" || resp.Message == "" {
+		t.Errorf("ToErrorResponse(nil) should return default error response")
 	}
 }

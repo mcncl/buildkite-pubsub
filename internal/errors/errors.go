@@ -30,6 +30,11 @@ type errorType struct {
 	retryable bool
 }
 
+type ErrorWithDetails interface {
+	Error() string
+	Details() map[string]interface{}
+}
+
 // Error implements the error interface
 func (e *errorType) Error() string {
 	if e == nil {
@@ -286,4 +291,126 @@ func Format(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+// Make sure our errorType implements ErrorWithDetails
+func (e *errorType) Details() map[string]interface{} {
+	if e == nil {
+		return nil
+	}
+	return e.details
+}
+
+// GetDetails returns error details if available, nil otherwise
+func GetDetails(err error) map[string]interface{} {
+	if err == nil {
+		return nil
+	}
+
+	if detailedErr, ok := err.(ErrorWithDetails); ok {
+		return detailedErr.Details()
+	}
+
+	return nil
+}
+
+// WithRetryOption adds a retry duration suggestion to an error
+func WithRetryOption(err error, retrySeconds int) error {
+	if err == nil {
+		return nil
+	}
+
+	if customErr, ok := err.(*errorType); ok {
+		// Add retry info to details
+		details := customErr.details
+		if details == nil {
+			details = make(map[string]interface{})
+		}
+		details["retry_after"] = retrySeconds
+
+		return &errorType{
+			baseErr:   customErr.baseErr,
+			msg:       customErr.msg,
+			cause:     customErr.cause,
+			details:   details,
+			retryable: true, // Always make it retryable if we suggest retry
+		}
+	}
+
+	// If it's not our custom error type, wrap it
+	return WithDetails(
+		MakeRetryable(Wrap(err, "temporary failure")),
+		map[string]interface{}{
+			"retry_after": retrySeconds,
+		},
+	)
+}
+
+// GetRetryOption extracts the retry duration from an error if available
+func GetRetryOption(err error) (int, bool) {
+	details := GetDetails(err)
+	if details == nil {
+		return 0, false
+	}
+
+	if retry, ok := details["retry_after"]; ok {
+		if retryInt, ok := retry.(int); ok {
+			return retryInt, true
+		}
+	}
+
+	return 0, false
+}
+
+// ErrorResponse provides a consistent structure for error responses
+type ErrorResponse struct {
+	Status     string                 `json:"status"`
+	Message    string                 `json:"message"`
+	ErrorType  string                 `json:"error_type"`
+	RetryAfter int                    `json:"retry_after,omitempty"`
+	Details    map[string]interface{} `json:"details,omitempty"`
+}
+
+// ToErrorResponse converts an error to a standardized ErrorResponse
+func ToErrorResponse(err error) ErrorResponse {
+	if err == nil {
+		return ErrorResponse{
+			Status:  "error",
+			Message: "Unknown error",
+		}
+	}
+
+	response := ErrorResponse{
+		Status:  "error",
+		Message: Format(err),
+		Details: GetDetails(err),
+	}
+
+	// Set error type
+	switch {
+	case IsAuthError(err):
+		response.ErrorType = "auth"
+	case IsValidationError(err):
+		response.ErrorType = "validation"
+	case IsRateLimitError(err):
+		response.ErrorType = "rate_limit"
+	case IsConnectionError(err):
+		response.ErrorType = "connection"
+	case IsPublishError(err):
+		response.ErrorType = "publish"
+	case IsNotFoundError(err):
+		response.ErrorType = "not_found"
+	default:
+		response.ErrorType = "internal"
+	}
+
+	// Add retry info if available
+	if retry, ok := GetRetryOption(err); ok {
+		response.RetryAfter = retry
+	} else if IsRetryable(err) {
+		// Default retry suggestion for retryable errors
+		response.RetryAfter = 30
+	}
+
+	return response
 }
