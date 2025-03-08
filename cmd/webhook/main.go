@@ -90,6 +90,10 @@ func main() {
 		MaxAge:         3600,
 	}
 
+	// Create rate limiters
+	globalRateLimiter := security.NewGlobalRateLimiter(cfg.Security.RateLimit)
+	ipRateLimiter := security.NewIPRateLimiter(cfg.Security.IPRateLimit)
+
 	// Add webhook route with middleware
 	// Note: The order of middleware is important!
 	mux.Handle(cfg.Webhook.Path, chainMiddleware(
@@ -97,9 +101,9 @@ func main() {
 		request.WithRequestID, // Generate request ID first
 		logging.WithLogging,   // Add logging early for all requests
 		security.WithSecurityHeaders(securityConfig),
-		security.WithRateLimit(cfg.Security.RateLimit),     // Rate limiting before timeout
-		security.WithIPRateLimit(cfg.Security.IPRateLimit), // IP-based rate limiting
-		request.WithTimeout(cfg.Server.RequestTimeout),     // Timeout last
+		security.WithRateLimiter(globalRateLimiter), // Global rate limiting
+		security.WithRateLimiter(ipRateLimiter),     // IP-based rate limiting
+		request.WithTimeout(cfg.Server.RequestTimeout), // Timeout last
 	))
 
 	// Configure server
