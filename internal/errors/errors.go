@@ -43,7 +43,7 @@ func (e *errorType) Error() string {
 
 	base := fmt.Sprintf("%s: %s", e.baseErr.Error(), e.msg)
 
-	if e.details != nil && len(e.details) > 0 {
+	if len(e.details) > 0 {
 		detailsJSON, err := json.Marshal(e.details)
 		if err == nil {
 			base += fmt.Sprintf(" - details: %s", detailsJSON)

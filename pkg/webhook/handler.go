@@ -205,10 +205,9 @@ func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error,
 	metrics.WebhookRequestsTotal.WithLabelValues(h.getStatusCodeForError(err), eventType).Inc()
 
 	var errorType string
-	var details interface{}
 
 	// Extract error details if available
-	details = errors.GetDetails(err)
+	details := errors.GetDetails(err)
 
 	// Create error response based on error type
 	response := ErrorResponse{
