@@ -10,36 +10,36 @@ import (
 
 var (
 	// Webhook request metrics
-	WebhookRequestsTotal       *prometheus.CounterVec    // Total number of webhook requests
-	WebhookRequestDuration     *prometheus.HistogramVec  // Duration of webhook requests
-	RequestSizeBytes           *prometheus.HistogramVec  // Size of incoming requests
-	ResponseSizeBytes          *prometheus.HistogramVec  // Size of outgoing responses
-	AuthFailures               prometheus.Counter        // Authentication failures
-	RateLimitExceeded          *prometheus.CounterVec    // Rate limit exceeded events
-	RateLimitTotal             *prometheus.CounterVec    // Total rate limit hits by type and endpoint
-	ConcurrentRequests         *prometheus.GaugeVec      // Current number of concurrent requests
-	ErrorsTotal                *prometheus.CounterVec    // Total errors by type
-	
+	WebhookRequestsTotal   *prometheus.CounterVec   // Total number of webhook requests
+	WebhookRequestDuration *prometheus.HistogramVec // Duration of webhook requests
+	RequestSizeBytes       *prometheus.HistogramVec // Size of incoming requests
+	ResponseSizeBytes      *prometheus.HistogramVec // Size of outgoing responses
+	AuthFailures           prometheus.Counter       // Authentication failures
+	RateLimitExceeded      *prometheus.CounterVec   // Rate limit exceeded events
+	RateLimitTotal         *prometheus.CounterVec   // Total rate limit hits by type and endpoint
+	ConcurrentRequests     *prometheus.GaugeVec     // Current number of concurrent requests
+	ErrorsTotal            *prometheus.CounterVec   // Total errors by type
+
 	// Message size metrics
-	MessageSizeBytes           *prometheus.HistogramVec  // Size of webhook payload messages
-	
+	MessageSizeBytes *prometheus.HistogramVec // Size of webhook payload messages
+
 	// Payload processing metrics
-	PayloadProcessingDuration  *prometheus.HistogramVec  // Processing time for payloads
-	
+	PayloadProcessingDuration *prometheus.HistogramVec // Processing time for payloads
+
 	// Build status metrics
-	BuildStatusTotal           *prometheus.CounterVec    // Build status counts
-	PipelineBuildsTotal        *prometheus.CounterVec    // Total builds per pipeline
-	QueueTimeSeconds           *prometheus.HistogramVec  // Build queue time
-	
+	BuildStatusTotal    *prometheus.CounterVec   // Build status counts
+	PipelineBuildsTotal *prometheus.CounterVec   // Total builds per pipeline
+	QueueTimeSeconds    *prometheus.HistogramVec // Build queue time
+
 	// Pub/Sub metrics
-	PubsubPublishRequestsTotal *prometheus.CounterVec    // Pub/Sub publish attempts
-	PubsubPublishDuration      prometheus.Histogram      // Pub/Sub publish latency
-	PubsubMessageSizeBytes     *prometheus.HistogramVec  // Size of Pub/Sub messages
-	PubsubRetries              *prometheus.CounterVec    // Pub/Sub retries
-	PubsubBacklogSize          *prometheus.GaugeVec      // Current Pub/Sub backlog size
-	PubsubConnectionPoolSize   *prometheus.GaugeVec      // Connection pool size
-	PubsubBatchSize            prometheus.Histogram      // Size of batched messages
-	
+	PubsubPublishRequestsTotal *prometheus.CounterVec   // Pub/Sub publish attempts
+	PubsubPublishDuration      prometheus.Histogram     // Pub/Sub publish latency
+	PubsubMessageSizeBytes     *prometheus.HistogramVec // Size of Pub/Sub messages
+	PubsubRetries              *prometheus.CounterVec   // Pub/Sub retries
+	PubsubBacklogSize          *prometheus.GaugeVec     // Current Pub/Sub backlog size
+	PubsubConnectionPoolSize   *prometheus.GaugeVec     // Connection pool size
+	PubsubBatchSize            prometheus.Histogram     // Size of batched messages
+
 	// Mutex to protect metric initialization
 	initMutex sync.Mutex
 )

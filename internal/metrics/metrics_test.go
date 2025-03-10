@@ -318,7 +318,7 @@ func TestMetricsLabels(t *testing.T) {
 
 	// Check we have 3 different label combinations
 	if len(buildStatusMetric.Metric) != 3 {
-		t.Errorf("Expected 3 different label sets for BuildStatusTotal, got %d", 
+		t.Errorf("Expected 3 different label sets for BuildStatusTotal, got %d",
 			len(buildStatusMetric.Metric))
 	}
 }

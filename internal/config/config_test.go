@@ -116,7 +116,7 @@ func TestLoadFromFile(t *testing.T) {
 		}
 	}`
 	jsonPath := filepath.Join(tmpDir, "config.json")
-	if err := os.WriteFile(jsonPath, []byte(jsonConfig), 0644); err != nil {
+	if err := os.WriteFile(jsonPath, []byte(jsonConfig), 0o644); err != nil {
 		t.Fatalf("Failed to write test JSON file: %v", err)
 	}
 
@@ -136,7 +136,7 @@ security:
   ip_rate_limit: 40
 `
 	yamlPath := filepath.Join(tmpDir, "config.yaml")
-	if err := os.WriteFile(yamlPath, []byte(yamlConfig), 0644); err != nil {
+	if err := os.WriteFile(yamlPath, []byte(yamlConfig), 0o644); err != nil {
 		t.Fatalf("Failed to write test YAML file: %v", err)
 	}
 
@@ -176,7 +176,7 @@ security:
 
 	// Test loading from invalid file
 	invalidPath := filepath.Join(tmpDir, "invalid.json")
-	if err := os.WriteFile(invalidPath, []byte("not valid json"), 0644); err != nil {
+	if err := os.WriteFile(invalidPath, []byte("not valid json"), 0o644); err != nil {
 		t.Fatalf("Failed to write invalid file: %v", err)
 	}
 	_, err = LoadFromFile(invalidPath)
@@ -412,7 +412,7 @@ func TestLoadWithPrecedence(t *testing.T) {
 		}
 	}`
 	configPath := filepath.Join(tmpDir, "config.json")
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
 		t.Fatalf("Failed to write test config file: %v", err)
 	}
 

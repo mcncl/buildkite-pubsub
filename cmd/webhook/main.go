@@ -31,7 +31,7 @@ func main() {
 
 	// Initialize structured logger
 	logger := initLogger(*logLevel, *logFormat)
-	
+
 	// Load configuration
 	cfg, err := config.Load(*configFile, nil)
 	if err != nil {
@@ -109,8 +109,8 @@ func main() {
 		request.WithRequestID, // Generate request ID first
 		loggingMiddleware.WithStructuredLogging(logger), // Add structured logging early for all requests
 		security.WithSecurityHeaders(securityConfig),
-		security.WithRateLimiter(globalRateLimiter), // Global rate limiting
-		security.WithRateLimiter(ipRateLimiter),     // IP-based rate limiting
+		security.WithRateLimiter(globalRateLimiter),    // Global rate limiting
+		security.WithRateLimiter(ipRateLimiter),        // IP-based rate limiting
 		request.WithTimeout(cfg.Server.RequestTimeout), // Timeout last
 	))
 

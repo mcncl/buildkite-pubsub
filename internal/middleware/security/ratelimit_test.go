@@ -47,7 +47,7 @@ func TestGlobalRateLimiter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			limiter := NewGlobalRateLimiter(tt.requestsPerMinute)
-			
+
 			allowed := 0
 			for i := 0; i < tt.numRequests; i++ {
 				if limiter.Allow(context.Background(), "") {
@@ -113,7 +113,7 @@ func TestIPRateLimiter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			limiter := NewIPRateLimiter(tt.requestsPerMinute)
-			
+
 			allowed := make(map[string]int)
 			for _, req := range tt.requests {
 				if limiter.Allow(context.Background(), req.ip) {
@@ -162,7 +162,7 @@ func TestTokenRateLimiter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			limiter := NewTokenRateLimiter(tt.requestsPerMinute)
-			
+
 			allowed := make(map[string]int)
 			for _, req := range tt.requests {
 				if limiter.Allow(context.Background(), req.token) {
@@ -269,7 +269,7 @@ func TestConcurrentRateLimiting(t *testing.T) {
 func TestRateLimiterCleanup(t *testing.T) {
 	t.Run("IP rate limiter cleanup", func(t *testing.T) {
 		limiter := NewIPRateLimiter(10)
-		
+
 		// Add some IPs
 		ips := []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"}
 		for _, ip := range ips {
@@ -287,7 +287,7 @@ func TestRateLimiterCleanup(t *testing.T) {
 
 	t.Run("token rate limiter cleanup", func(t *testing.T) {
 		limiter := NewTokenRateLimiter(10)
-		
+
 		// Add some tokens
 		tokens := []string{"token1", "token2", "token3"}
 		for _, token := range tokens {
@@ -306,19 +306,19 @@ func TestRateLimiterCleanup(t *testing.T) {
 
 func TestRateLimiterErrors(t *testing.T) {
 	limiter := NewGlobalRateLimiter(1)
-	
+
 	// First request should succeed
 	if !limiter.Allow(context.Background(), "") {
 		t.Error("first request should be allowed")
 	}
-	
+
 	// Second request should fail with a rate limit error
 	err := limiter.AllowWithError(context.Background(), "")
-	
+
 	if err == nil {
 		t.Error("expected rate limit error, got nil")
 	}
-	
+
 	if !errors.IsRateLimitError(err) {
 		t.Errorf("expected rate limit error, got %T: %v", err, err)
 	}
@@ -336,11 +336,11 @@ func TestRateLimiterErrors(t *testing.T) {
 
 func TestRateLimiterWithContextCancellation(t *testing.T) {
 	limiter := NewGlobalRateLimiter(5)
-	
+
 	// Create a context that's already cancelled
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	
+
 	// Rate limiting with a cancelled context should return an error
 	err := limiter.AllowWithError(ctx, "")
 	if err == nil || !errors.IsConnectionError(err) {

@@ -371,10 +371,10 @@ func formatForDevelopment(level Level, entry map[string]interface{}) string {
 	}
 
 	// Format all parts together
-	return fmt.Sprintf("%s %s%s%s: %s%s\n", 
-		timeStr, 
-		levelColor, 
-		levelName, 
+	return fmt.Sprintf("%s %s%s%s: %s%s\n",
+		timeStr,
+		levelColor,
+		levelName,
 		resetColor,
 		msg,
 		fields,

@@ -18,13 +18,13 @@ import (
 type RateLimiter interface {
 	// Allow checks if the request is allowed based on the key
 	Allow(ctx context.Context, key string) bool
-	
+
 	// AllowWithError returns nil if allowed, or an appropriate error if not allowed
 	AllowWithError(ctx context.Context, key string) error
-	
+
 	// CleanupExpired removes expired rate limiters
 	CleanupExpired()
-	
+
 	// GetRequestsPerMinute returns the configured requests per minute
 	GetRequestsPerMinute() int
 }
@@ -78,7 +78,7 @@ func (b *BaseRateLimiter) newLimiter() *rate.Limiter {
 func (b *BaseRateLimiter) checkCleanup() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	
+
 	if time.Since(b.lastCleanup) >= b.cleanupInterval {
 		go b.CleanupExpired()
 		b.lastCleanup = time.Now()
@@ -88,9 +88,9 @@ func (b *BaseRateLimiter) checkCleanup() {
 // CleanupExpired removes expired rate limiters
 func (b *BaseRateLimiter) CleanupExpired() {
 	now := time.Now()
-	
+
 	var keysToDelete []string
-	
+
 	// First pass: identify keys for deletion
 	b.items.Range(func(key, value interface{}) bool {
 		limiter := value.(*rate.Limiter)
@@ -102,7 +102,7 @@ func (b *BaseRateLimiter) CleanupExpired() {
 		}
 		return true
 	})
-	
+
 	// Second pass: delete identified keys
 	for _, key := range keysToDelete {
 		b.items.Delete(key)
@@ -135,13 +135,13 @@ func (b *BaseRateLimiter) AllowWithError(ctx context.Context, key string) error 
 		return errors.WithDetails(
 			errors.NewRateLimitError("rate limit exceeded"),
 			map[string]interface{}{
-				"key": key,
-				"rate_limit": b.requestsPerMinute,
+				"key":         key,
+				"rate_limit":  b.requestsPerMinute,
 				"retry_after": 60, // Suggest retry after 60 seconds
 			},
 		)
 	}
-	
+
 	return nil
 }
 
@@ -206,7 +206,7 @@ func WithRateLimiter(limiter RateLimiter) func(http.Handler) http.Handler {
 			// For global limiters, we just use empty key
 			// For IP limiters, we extract IP later
 			key := ""
-			
+
 			// Determine rate limit key based on the limiter type
 			switch limiter.(type) {
 			case *IPRateLimiter:
@@ -217,10 +217,10 @@ func WithRateLimiter(limiter RateLimiter) func(http.Handler) http.Handler {
 					key = r.Header.Get("X-API-Key")
 				}
 			}
-			
+
 			if err := limiter.AllowWithError(r.Context(), key); err != nil {
 				metrics.RateLimitExceeded.WithLabelValues("http").Inc()
-				
+
 				// Set retry-after header if it's a rate limit error
 				if errors.IsRateLimitError(err) {
 					if retryAfter, ok := errors.GetRetryOption(err); ok {
@@ -229,11 +229,11 @@ func WithRateLimiter(limiter RateLimiter) func(http.Handler) http.Handler {
 						w.Header().Set("Retry-After", "60") // Default to 60 seconds
 					}
 				}
-				
+
 				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 				return
 			}
-			
+
 			next.ServeHTTP(w, r)
 		})
 	}

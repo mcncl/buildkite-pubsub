@@ -44,7 +44,7 @@ func TestHandler(t *testing.T) {
 		wantStatus    int
 		wantPublished bool
 		wantEventType string
-		wantErrorType string // auth, validation, publish, etc.
+		wantErrorType string          // auth, validation, publish, etc.
 		wantMetrics   map[string]bool // map of metric names to check existence
 	}{
 		{
@@ -89,13 +89,13 @@ func TestHandler(t *testing.T) {
 		},
 		{
 			name:          "invalid method",
-			method:        http.MethodGet,  // Using GET instead of POST
+			method:        http.MethodGet, // Using GET instead of POST
 			payload:       "{}",
 			token:         "test-token",
 			publisherType: "normal",
-			wantStatus:    http.StatusMethodNotAllowed,  // 405
+			wantStatus:    http.StatusMethodNotAllowed, // 405
 			wantPublished: false,
-			wantErrorType: "validation",  // We still classify it as validation error
+			wantErrorType: "validation", // We still classify it as validation error
 			wantMetrics: map[string]bool{
 				"buildkite_webhook_requests_total": true,
 				"buildkite_errors_total":           true,

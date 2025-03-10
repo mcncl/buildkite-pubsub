@@ -158,20 +158,20 @@ func TestWithStructuredLogging(t *testing.T) {
 				// Find the handler's log message
 				var handlerLog map[string]interface{}
 				var foundHandlerLog bool
-				
+
 				for _, line := range logLines {
 					var entry map[string]interface{}
 					if err := json.Unmarshal([]byte(line), &entry); err != nil {
 						continue
 					}
-					
+
 					if msg, ok := entry["message"].(string); ok && msg == "Handler log message" {
 						handlerLog = entry
 						foundHandlerLog = true
 						break
 					}
 				}
-				
+
 				if !foundHandlerLog {
 					t.Error("Expected to find handler log message")
 				} else {
