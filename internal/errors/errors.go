@@ -1,6 +1,3 @@
-// Package errors provides a standardized error handling framework for the Buildkite PubSub Webhook application.
-// It defines common error types, wrapping functions, and classification methods to ensure consistent
-// error handling across the application.
 package errors
 
 import (

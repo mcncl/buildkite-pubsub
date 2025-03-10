@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,8 +11,9 @@ import (
 
 	"github.com/mcncl/buildkite-pubsub/internal/config"
 	"github.com/mcncl/buildkite-pubsub/internal/errors"
+	"github.com/mcncl/buildkite-pubsub/internal/logging"
 	"github.com/mcncl/buildkite-pubsub/internal/metrics"
-	"github.com/mcncl/buildkite-pubsub/internal/middleware/logging"
+	loggingMiddleware "github.com/mcncl/buildkite-pubsub/internal/middleware/logging"
 	"github.com/mcncl/buildkite-pubsub/internal/middleware/request"
 	"github.com/mcncl/buildkite-pubsub/internal/middleware/security"
 	"github.com/mcncl/buildkite-pubsub/internal/publisher"
@@ -25,16 +25,22 @@ import (
 func main() {
 	// Parse command line flags
 	configFile := flag.String("config", "", "Path to configuration file (JSON or YAML)")
+	logLevel := flag.String("log-level", "info", "Log level (debug, info, warn, error)")
+	logFormat := flag.String("log-format", "json", "Log format (json, text, dev)")
 	flag.Parse()
 
+	// Initialize structured logger
+	logger := initLogger(*logLevel, *logFormat)
+	
 	// Load configuration
 	cfg, err := config.Load(*configFile, nil)
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		logger.WithError(err).Error("Failed to load configuration")
+		os.Exit(1)
 	}
 
 	// Log the configuration (with sensitive values masked)
-	log.Printf("Configuration loaded: %s", cfg)
+	logger.WithField("config", cfg.String()).Info("Configuration loaded")
 
 	ctx := context.Background()
 
@@ -44,7 +50,8 @@ func main() {
 	// Add metrics initialization
 	reg := prometheus.NewRegistry()
 	if err := metrics.InitMetrics(reg); err != nil {
-		log.Fatalf("Failed to initialize metrics: %v", err)
+		logger.WithError(err).Error("Failed to initialize metrics")
+		os.Exit(1)
 	}
 
 	// Create publisher
@@ -62,7 +69,8 @@ func main() {
 			"topic_id":   cfg.GCP.TopicID,
 		})
 
-		log.Fatalf("Publisher initialization error: %s", errors.Format(err))
+		logger.WithError(err).Error("Publisher initialization error")
+		os.Exit(1)
 	}
 	defer pub.Close()
 
@@ -99,7 +107,7 @@ func main() {
 	mux.Handle(cfg.Webhook.Path, chainMiddleware(
 		webhookHandler,
 		request.WithRequestID, // Generate request ID first
-		logging.WithLogging,   // Add logging early for all requests
+		loggingMiddleware.WithStructuredLogging(logger), // Add structured logging early for all requests
 		security.WithSecurityHeaders(securityConfig),
 		security.WithRateLimiter(globalRateLimiter), // Global rate limiting
 		security.WithRateLimiter(ipRateLimiter),     // IP-based rate limiting
@@ -117,9 +125,10 @@ func main() {
 
 	// Start server in goroutine
 	go func() {
-		log.Printf("Server starting on port %d", cfg.Server.Port)
+		logger.WithField("port", cfg.Server.Port).Info("Server starting")
 		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-			log.Fatalf("HTTP server error: %v", err)
+			logger.WithError(err).Error("HTTP server error")
+			os.Exit(1)
 		}
 	}()
 
@@ -129,17 +138,65 @@ func main() {
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
+	sig := <-sigChan
+	logger.WithField("signal", sig.String()).Info("Shutting down server")
 
 	// Graceful shutdown
-	log.Println("Shutting down server...")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.RequestTimeout)
 	defer cancel()
 
 	healthCheck.SetReady(false)
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("HTTP server Shutdown: %v", err)
+		logger.WithError(err).Error("HTTP server shutdown error")
 	}
+
+	logger.Info("Server shutdown complete")
+}
+
+// initLogger creates and configures the structured logger
+func initLogger(level, format string) logging.Logger {
+	// Parse log level
+	var logLevel logging.Level
+	switch level {
+	case "debug":
+		logLevel = logging.LevelDebug
+	case "info":
+		logLevel = logging.LevelInfo
+	case "warn":
+		logLevel = logging.LevelWarn
+	case "error":
+		logLevel = logging.LevelError
+	default:
+		logLevel = logging.LevelInfo
+	}
+
+	// Parse log format
+	var logFormat logging.Format
+	switch format {
+	case "json":
+		logFormat = logging.FormatJSON
+	case "text":
+		logFormat = logging.FormatText
+	case "dev":
+		logFormat = logging.FormatDevelopment
+	default:
+		logFormat = logging.FormatJSON
+	}
+
+	// Get hostname
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown"
+	}
+
+	// Create and return logger
+	return logging.NewLogger(logging.Config{
+		Output:   os.Stderr,
+		Level:    logLevel,
+		Format:   logFormat,
+		AppName:  "buildkite-webhook",
+		Hostname: hostname,
+	})
 }
 
 func getPort() string {
