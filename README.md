@@ -2,6 +2,8 @@
 
 A webhook handler that securely forwards Buildkite build events to Google Cloud Pub/Sub, enabling event-driven architectures and integrations with your Buildkite pipelines.
 
+[![Build status](https://badge.buildkite.com/5199de1bb7bfbc37a604373b26605143f70ac6569ee2bfec6e.svg)](https://buildkite.com/testkite/buildkite-pub-sub)
+
 ## Overview
 
 This service connects Buildkite's webhook system to Google Cloud Pub/Sub, allowing you to:
