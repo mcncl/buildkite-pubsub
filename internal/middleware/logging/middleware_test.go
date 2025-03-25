@@ -29,7 +29,10 @@ func TestWithStructuredLogging(t *testing.T) {
 			path:      "/test",
 			requestHandler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("success"))
+				_, err := w.Write([]byte("success"))
+				if err != nil {
+					t.Fatalf("expected success, got %v", err)
+				}
 			},
 			wantStatus: http.StatusOK,
 			wantLogFields: map[string]interface{}{
@@ -46,7 +49,10 @@ func TestWithStructuredLogging(t *testing.T) {
 			path:      "/error",
 			requestHandler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte("error"))
+				_, err := w.Write([]byte("error"))
+				if err != nil {
+					t.Fatalf("expected err, got %v", err)
+				}
 			},
 			wantStatus: http.StatusBadRequest,
 			wantLogFields: map[string]interface{}{

@@ -273,7 +273,10 @@ func (l *stdLogger) log(level Level, msg string) {
 		return
 	}
 
-	l.config.Output.Write(output)
+	_, err = l.config.Output.Write(output)
+	if err != nil {
+		return
+	}
 }
 
 // formatAsText formats a log entry as key=value pairs
