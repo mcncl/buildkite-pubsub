@@ -31,7 +31,7 @@ services:
   goreleaser:
     profiles:
       - release
-    image: goreleaser/goreleaser:latest@sha256:da5dbdb1fe1c8fa9a73e152070e4a9b178c3500c3db383d8cff2f206b06ef748
+    image: goreleaser/goreleaser:latest@sha256:8c839aec63cd591b8e8ee31ac3ff741d0faff5dac4d239ecb74177182f937136
     volumes:
       - .:/app
     working_dir: /app
