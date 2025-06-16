@@ -2,16 +2,16 @@ steps:
   - label: "🔍 Lint & Format"
     key: "lint"
     plugins:
-      - docker-compose#v5.9.0:
+      - docker-compose#v5.10.0:
           run: lint
           config: compose.ci.yml
-      - docker-compose#v5.9.0:
+      - docker-compose#v5.10.0:
           run: fmt
           config: compose.ci.yml
 
   - label: "🧪 Test"
     key: "test"
     plugins:
-      - docker-compose#v5.9.0:
+      - docker-compose#v5.10.0:
           run: test
           config: compose.ci.yml
