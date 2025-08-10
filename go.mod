@@ -5,7 +5,7 @@ go 1.23.0
 toolchain go1.24.6
 
 require (
-	cloud.google.com/go/pubsub v1.49.0
+	cloud.google.com/go/pubsub/v2 v2.0.0
 	cloud.google.com/go/pubsub/v2 v2.0.0
 	github.com/google/uuid v1.6.0
 	github.com/prometheus/client_golang v1.23.0
