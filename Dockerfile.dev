@@ -2,7 +2,7 @@ FROM golang:1.25@sha256:91e2cd436f7adbfad0a0cbb7bf8502fa863ed8461414ceebe36c6304
 
 # Install development tools
 RUN go install mvdan.cc/gofumpt@latest && \
-    go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.63.4
+    go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 WORKDIR /app
 
