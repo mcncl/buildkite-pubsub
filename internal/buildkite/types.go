@@ -24,9 +24,9 @@ type Build struct {
 	Source      string                 `json:"source"`
 	Creator     User                   `json:"creator"`
 	CreatedAt   time.Time              `json:"created_at"`
-	ScheduledAt time.Time              `json:"scheduled_at"`
-	StartedAt   time.Time              `json:"started_at"`
-	FinishedAt  time.Time              `json:"finished_at"`
+	ScheduledAt *time.Time             `json:"scheduled_at"`
+	StartedAt   *time.Time             `json:"started_at"`
+	FinishedAt  *time.Time             `json:"finished_at"`
 	MetaData    map[string]interface{} `json:"meta_data"`
 	ClusterID   string                 `json:"cluster_id"`
 }

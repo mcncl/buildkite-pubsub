@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"cloud.google.com/go/pubsub/v2"
 	"github.com/mcncl/buildkite-pubsub/internal/config"
@@ -18,6 +19,7 @@ import (
 	"github.com/mcncl/buildkite-pubsub/internal/middleware/request"
 	"github.com/mcncl/buildkite-pubsub/internal/middleware/security"
 	"github.com/mcncl/buildkite-pubsub/internal/publisher"
+	"github.com/mcncl/buildkite-pubsub/internal/telemetry"
 	"github.com/mcncl/buildkite-pubsub/pkg/webhook"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -47,6 +49,44 @@ func main() {
 
 	// Initialize health checker
 	healthCheck := webhook.NewHealthCheck()
+
+	// Initialize telemetry if enabled
+	var telemetryProvider *telemetry.Provider
+	if cfg.GCP.EnableTracing {
+		// Use environment variables for OTLP configuration (Honeycomb, Jaeger, etc.)
+		telemetryConfig := telemetry.ConfigFromEnv()
+
+		// Set defaults only if environment variables not provided
+		if telemetryConfig.ServiceName == "" {
+			telemetryConfig.ServiceName = "buildkite-webhook"
+		}
+		// Only use config file endpoint if no environment endpoint is set
+		if telemetryConfig.OTLPEndpoint == "" && os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" {
+			telemetryConfig.OTLPEndpoint = cfg.GCP.OTLPEndpoint
+		}
+
+		telemetryConfig.ServiceVersion = "v1.0.0"
+		if env := os.Getenv("OTEL_ENVIRONMENT"); env != "" {
+			telemetryConfig.Environment = env
+		} else {
+			telemetryConfig.Environment = "development"
+		}
+
+		telemetryProvider, err = telemetry.NewProvider(telemetryConfig)
+		if err != nil {
+			logger.WithError(err).Warn("Failed to create telemetry provider, continuing without tracing")
+		} else {
+			// Try to start telemetry with timeout
+			startCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			if err := telemetryProvider.Start(startCtx); err != nil {
+				logger.WithError(err).Warn("Failed to start telemetry, continuing without tracing")
+				telemetryProvider = nil
+			} else {
+				logger.WithField("endpoint", telemetryConfig.OTLPEndpoint).Info("Distributed tracing enabled")
+			}
+			cancel()
+		}
+	}
 
 	// Add metrics initialization
 	reg := prometheus.NewRegistry()
@@ -123,15 +163,24 @@ func main() {
 
 	// Add webhook route with middleware
 	// Note: The order of middleware is important!
-	mux.Handle(cfg.Webhook.Path, chainMiddleware(
-		webhookHandler,
-		request.WithRequestID, // Generate request ID first
-		loggingMiddleware.WithStructuredLogging(logger), // Add structured logging early for all requests
+	var middlewares []func(http.Handler) http.Handler
+
+	// Add tracing middleware first if enabled
+	if telemetryProvider != nil {
+		middlewares = append(middlewares, telemetryProvider.TracingMiddleware)
+	}
+
+	// Standard middleware chain
+	middlewares = append(middlewares,
+		request.WithRequestID,                           // Generate request ID
+		loggingMiddleware.WithStructuredLogging(logger), // Structured logging
 		security.WithSecurityHeaders(securityConfig),
 		security.WithRateLimiter(globalRateLimiter),    // Global rate limiting
 		security.WithRateLimiter(ipRateLimiter),        // IP-based rate limiting
 		request.WithTimeout(cfg.Server.RequestTimeout), // Timeout last
-	))
+	)
+
+	mux.Handle(cfg.Webhook.Path, chainMiddleware(webhookHandler, middlewares...))
 
 	// Configure server
 	srv := &http.Server{
@@ -167,6 +216,13 @@ func main() {
 	healthCheck.SetReady(false)
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.WithError(err).Error("HTTP server shutdown error")
+	}
+
+	// Shutdown telemetry
+	if telemetryProvider != nil {
+		if err := telemetryProvider.Shutdown(shutdownCtx); err != nil {
+			logger.WithError(err).Error("Telemetry shutdown error")
+		}
 	}
 
 	logger.Info("Server shutdown complete")

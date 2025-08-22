@@ -72,7 +72,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		GCP: GCPConfig{
 			CredentialsFile:        "credentials.json",
-			EnableTracing:          false,
+			EnableTracing:          true,
 			OTLPEndpoint:           "localhost:4317",
 			TraceSamplingRatio:     0.1,
 			PubSubBatchSize:        100,

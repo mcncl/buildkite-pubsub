@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc/credentials"
 )
 
 // Provider wraps the OpenTelemetry trace provider and exporter
@@ -32,6 +35,7 @@ type Config struct {
 	ServiceVersion string
 	Environment    string
 	OTLPEndpoint   string
+	OTLPHeaders    map[string]string
 	BatchTimeout   int // seconds
 	ExportTimeout  int // seconds
 	MaxExportBatch int
@@ -57,6 +61,42 @@ func (c Config) Validate() error {
 		return fmt.Errorf("OTLP endpoint cannot be empty")
 	}
 	return nil
+}
+
+// ConfigFromEnv creates a Config from standard OpenTelemetry environment variables
+func ConfigFromEnv() Config {
+	cfg := DefaultConfig()
+
+	// Service name from OTEL_SERVICE_NAME or fallback
+	if serviceName := os.Getenv("OTEL_SERVICE_NAME"); serviceName != "" {
+		cfg.ServiceName = serviceName
+	}
+
+	// OTLP endpoint from OTEL_EXPORTER_OTLP_ENDPOINT
+	if endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); endpoint != "" {
+		cfg.OTLPEndpoint = endpoint
+	}
+
+	// Parse headers from OTEL_EXPORTER_OTLP_HEADERS
+	if headers := os.Getenv("OTEL_EXPORTER_OTLP_HEADERS"); headers != "" {
+		cfg.OTLPHeaders = parseHeaders(headers)
+	}
+
+	return cfg
+}
+
+// parseHeaders parses header string like "key1=value1,key2=value2"
+func parseHeaders(headerStr string) map[string]string {
+	headers := make(map[string]string)
+	pairs := strings.Split(headerStr, ",")
+
+	for _, pair := range pairs {
+		if kv := strings.SplitN(strings.TrimSpace(pair), "=", 2); len(kv) == 2 {
+			headers[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+		}
+	}
+
+	return headers
 }
 
 // NewProvider creates a new telemetry provider
@@ -88,11 +128,41 @@ func (p *Provider) Start(ctx context.Context) error {
 	}
 
 	// Create OTLP exporter
-	client := otlptracegrpc.NewClient(
-		otlptracegrpc.WithEndpoint(p.config.OTLPEndpoint),
-		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithTimeout(5*time.Second),
-	)
+	endpoint := p.config.OTLPEndpoint
+
+	// Handle HTTPS URLs by extracting hostname and using proper port
+	if strings.HasPrefix(endpoint, "https://") {
+		endpoint = strings.TrimPrefix(endpoint, "https://")
+		if !strings.Contains(endpoint, ":") {
+			endpoint = endpoint + ":443"
+		}
+	} else if strings.HasPrefix(endpoint, "http://") {
+		endpoint = strings.TrimPrefix(endpoint, "http://")
+		if !strings.Contains(endpoint, ":") {
+			endpoint = endpoint + ":80"
+		}
+	}
+
+	clientOptions := []otlptracegrpc.Option{
+		otlptracegrpc.WithEndpoint(endpoint),
+		otlptracegrpc.WithTimeout(5 * time.Second),
+	}
+
+	// Add headers if provided (for Honeycomb authentication)
+	if len(p.config.OTLPHeaders) > 0 {
+		clientOptions = append(clientOptions, otlptracegrpc.WithHeaders(p.config.OTLPHeaders))
+	}
+
+	// Determine if we should use TLS
+	if strings.Contains(p.config.OTLPEndpoint, "api.honeycomb.io") || strings.HasPrefix(p.config.OTLPEndpoint, "https://") {
+		// Use TLS for Honeycomb and HTTPS endpoints
+		clientOptions = append(clientOptions, otlptracegrpc.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, "")))
+	} else {
+		// Use insecure for localhost/development
+		clientOptions = append(clientOptions, otlptracegrpc.WithInsecure())
+	}
+
+	client := otlptracegrpc.NewClient(clientOptions...)
 
 	exp, err := otlptrace.New(ctx, client)
 	if err != nil {
@@ -119,7 +189,7 @@ func (p *Provider) Start(ctx context.Context) error {
 			sdktrace.WithMaxQueueSize(p.config.MaxQueueSize),
 		),
 		sdktrace.WithResource(res),
-		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(0.1))),
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
 	)
 
 	// Set global trace provider

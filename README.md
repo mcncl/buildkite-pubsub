@@ -32,6 +32,7 @@ This service connects Buildkite's webhook system to Google Cloud Pub/Sub, allowi
 2. **Usage & Integration**
    - [Usage Guide](docs/USAGE.md) - Event patterns and examples
    - [Event Schema](docs/USAGE.md#event-structure) - Event payloads and attributes
+   - [Distributed Tracing](docs/DISTRIBUTED_TRACING.md) - OpenTelemetry setup with Honeycomb/Jaeger
    - [Monitoring](docs/MONITORING.md) - Metrics, alerts, and debugging
    - [Event Filtering](docs/EVENTS.md) - Pub/Sub subscription examples
 
@@ -51,6 +52,7 @@ This service connects Buildkite's webhook system to Google Cloud Pub/Sub, allowi
 
 - 📊 **Observability**
   - Prometheus metrics
+  - Distributed tracing (OpenTelemetry)
   - Grafana dashboards
   - Health checks
   - Alert templates

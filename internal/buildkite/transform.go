@@ -3,6 +3,7 @@ package buildkite
 import (
 	"encoding/json"
 	"strings"
+	"time"
 )
 
 func Transform(payload Payload) (TransformedPayload, error) {
@@ -17,6 +18,15 @@ func Transform(payload Payload) (TransformedPayload, error) {
 		}
 	}
 
+	// Handle nullable time fields
+	var startedAt, finishedAt time.Time
+	if payload.Build.StartedAt != nil {
+		startedAt = *payload.Build.StartedAt
+	}
+	if payload.Build.FinishedAt != nil {
+		finishedAt = *payload.Build.FinishedAt
+	}
+
 	transformed := TransformedPayload{
 		EventType: payload.Event,
 		Build: BuildInfo{
@@ -28,8 +38,8 @@ func Transform(payload Payload) (TransformedPayload, error) {
 			Branch:       payload.Build.Branch,
 			Commit:       payload.Build.Commit,
 			CreatedAt:    payload.Build.CreatedAt,
-			StartedAt:    payload.Build.StartedAt,
-			FinishedAt:   payload.Build.FinishedAt,
+			StartedAt:    startedAt,
+			FinishedAt:   finishedAt,
 			Pipeline:     payload.Pipeline.Slug,
 			Organization: orgName,
 		},

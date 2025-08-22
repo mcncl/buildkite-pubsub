@@ -11,6 +11,10 @@ import (
 	"github.com/mcncl/buildkite-pubsub/internal/errors"
 	"github.com/mcncl/buildkite-pubsub/internal/metrics"
 	"github.com/mcncl/buildkite-pubsub/internal/publisher"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ErrorResponse represents a standardized error response
@@ -124,8 +128,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Transform payload
+	tracer := otel.Tracer("buildkite-webhook")
+	ctx, transformSpan := tracer.Start(r.Context(), "transform_payload",
+		trace.WithAttributes(
+			attribute.String("event_type", eventType),
+			attribute.String("build_id", payload.Build.ID),
+		))
 	transformed, err := buildkite.Transform(payload)
+	transformSpan.End()
+
 	if err != nil {
+		transformSpan.RecordError(err)
 		err = errors.Wrap(err, "failed to transform payload")
 		metrics.ErrorsTotal.WithLabelValues("transform_error").Inc()
 		h.handleError(w, r, err, eventType)
@@ -138,7 +151,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		metrics.RecordPipelineBuild(build.Pipeline, build.Organization)
 
 		// Calculate and record queue time for started builds
-		if build.StartedAt.After(build.CreatedAt) {
+		if !build.StartedAt.IsZero() && build.StartedAt.After(build.CreatedAt) {
 			queueTime := build.StartedAt.Sub(build.CreatedAt).Seconds()
 			metrics.RecordQueueTime(build.Pipeline, queueTime)
 		}
@@ -152,7 +165,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metrics.RecordPubsubMessageSize(eventType, len(transformedJSON))
 
 	// Publish to Pub/Sub
-	msgID, err := h.publisher.Publish(r.Context(), transformed, map[string]string{
+	ctx, publishSpan := tracer.Start(ctx, "pubsub_publish",
+		trace.WithAttributes(
+			attribute.String("event_type", eventType),
+			attribute.String("pipeline", transformed.Pipeline.Name),
+		))
+	defer publishSpan.End()
+
+	msgID, err := h.publisher.Publish(ctx, transformed, map[string]string{
 		"origin":     "buildkite-webhook",
 		"event_type": eventType,
 	})
@@ -161,6 +181,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metrics.PubsubPublishDuration.Observe(pubDuration)
 
 	if err != nil {
+		publishSpan.RecordError(err)
+		publishSpan.SetStatus(codes.Error, "publish failed")
+
 		// Classify and handle the publish error
 		var publishErr error
 		if errors.IsConnectionError(err) {
@@ -186,6 +209,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleError(w, r, publishErr, eventType)
 		return
 	}
+
+	// Record successful publish
+	publishSpan.SetAttributes(attribute.String("message_id", msgID))
+	publishSpan.SetStatus(codes.Ok, "published successfully")
 
 	metrics.WebhookRequestsTotal.WithLabelValues("200", eventType).Inc()
 	metrics.PubsubPublishRequestsTotal.WithLabelValues("success", eventType).Inc()
