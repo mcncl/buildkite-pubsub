@@ -26,8 +26,8 @@ func TestTransform(t *testing.T) {
 			Branch:     "main",
 			Source:     "ui",
 			CreatedAt:  createdAt,
-			StartedAt:  startedAt,
-			FinishedAt: finishedAt,
+			StartedAt:  &startedAt,
+			FinishedAt: &finishedAt,
 			Creator: User{
 				ID:        "01831b25-7d66-431e-8dcf-6d7ff40c5255",
 				Name:      "Test User",
