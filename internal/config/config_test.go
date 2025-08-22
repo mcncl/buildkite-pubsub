@@ -28,28 +28,28 @@ func TestLoadFromEnv(t *testing.T) {
 	defer func() {
 		// Restore environment
 		for key := range envBackup {
-			os.Unsetenv(key)
+			_ = os.Unsetenv(key)
 		}
 		for key, val := range envBackup {
-			os.Setenv(key, val)
+			_ = os.Setenv(key, val)
 		}
 	}()
 
 	// Clear and set test environment variables
 	for key := range envBackup {
-		os.Unsetenv(key)
+		_ = os.Unsetenv(key)
 	}
 
 	// Set test environment variables
-	os.Setenv("PROJECT_ID", "test-project")
-	os.Setenv("TOPIC_ID", "test-topic")
-	os.Setenv("BUILDKITE_WEBHOOK_TOKEN", "test-token")
-	os.Setenv("PORT", "9090")
-	os.Setenv("LOG_LEVEL", "debug")
-	os.Setenv("MAX_REQUEST_SIZE", "5242880") // 5 MB
-	os.Setenv("REQUEST_TIMEOUT", "45")       // 45 seconds
-	os.Setenv("RATE_LIMIT", "120")           // 120 requests per minute
-	os.Setenv("IP_RATE_LIMIT", "60")         // 60 requests per minute per IP
+	_ = os.Setenv("PROJECT_ID", "test-project")
+	_ = os.Setenv("TOPIC_ID", "test-topic")
+	_ = os.Setenv("BUILDKITE_WEBHOOK_TOKEN", "test-token")
+	_ = os.Setenv("PORT", "9090")
+	_ = os.Setenv("LOG_LEVEL", "debug")
+	_ = os.Setenv("MAX_REQUEST_SIZE", "5242880") // 5 MB
+	_ = os.Setenv("REQUEST_TIMEOUT", "45")       // 45 seconds
+	_ = os.Setenv("RATE_LIMIT", "120")           // 120 requests per minute
+	_ = os.Setenv("IP_RATE_LIMIT", "60")         // 60 requests per minute per IP
 
 	// Load configuration from environment
 	cfg, err := LoadFromEnv()
@@ -93,7 +93,7 @@ func TestLoadFromFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create JSON configuration file
 	jsonConfig := `{
@@ -377,16 +377,16 @@ func TestLoadWithPrecedence(t *testing.T) {
 	defer func() {
 		// Restore environment
 		for key := range envBackup {
-			os.Unsetenv(key)
+			_ = os.Unsetenv(key)
 		}
 		for key, val := range envBackup {
-			os.Setenv(key, val)
+			_ = os.Setenv(key, val)
 		}
 	}()
 
 	// Clear environment variables
 	for key := range envBackup {
-		os.Unsetenv(key)
+		_ = os.Unsetenv(key)
 	}
 
 	// Create temporary directory for test files
@@ -394,7 +394,7 @@ func TestLoadWithPrecedence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create config file
 	configContent := `{
@@ -439,9 +439,9 @@ func TestLoadWithPrecedence(t *testing.T) {
 	}
 
 	// Test 3: Set environment variables to override file values
-	os.Setenv("PROJECT_ID", "env-project")
-	os.Setenv("PORT", "9999")
-	os.Setenv("LOG_LEVEL", "debug")
+	_ = os.Setenv("PROJECT_ID", "env-project")
+	_ = os.Setenv("PORT", "9999")
+	_ = os.Setenv("LOG_LEVEL", "debug")
 
 	cfg3, err := Load(configPath, nil)
 	if err != nil {

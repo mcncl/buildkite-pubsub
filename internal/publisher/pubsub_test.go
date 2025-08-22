@@ -4,8 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"cloud.google.com/go/pubsub"
 	"cloud.google.com/go/pubsub/pstest"
+	"cloud.google.com/go/pubsub/v2"
+	"cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -16,42 +17,54 @@ func TestPubSubPublisher(t *testing.T) {
 
 	// Create a pstest server
 	srv := pstest.NewServer()
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 
 	// Connect to the server
 	conn, err := grpc.NewClient(srv.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		t.Fatalf("grpc.Dial: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
-	// Create client
+	// Create client with v2 API
 	client, err := pubsub.NewClient(ctx, "project",
 		option.WithGRPCConn(conn),
 		option.WithoutAuthentication())
 	if err != nil {
 		t.Fatalf("pubsub.NewClient: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
-	// Create topic
+	// Create topic using admin client from client
 	topicID := "test-topic"
-	topic := client.Topic(topicID)
-	ok, err := topic.Exists(ctx)
+	topicPath := "projects/project/topics/" + topicID
+	_, err = client.TopicAdminClient.GetTopic(ctx, &pubsubpb.GetTopicRequest{
+		Topic: topicPath,
+	})
 	if err != nil {
-		t.Fatalf("topic.Exists: %v", err)
-	}
-	if !ok {
-		topic, err = client.CreateTopic(ctx, topicID)
+		// Topic doesn't exist, create it
+		_, err = client.TopicAdminClient.CreateTopic(ctx, &pubsubpb.Topic{
+			Name: topicPath,
+		})
 		if err != nil {
 			t.Fatalf("CreateTopic: %v", err)
 		}
 	}
 
+	// Create publisher with v2 API
+	publisher := client.Publisher(topicID)
+	publisher.PublishSettings = pubsub.PublishSettings{
+		CountThreshold: 100,
+		ByteThreshold:  1e6,
+		DelayThreshold: 10e6,
+	}
+
 	// Create test publisher
 	pub := &PubSubPublisher{
-		client: client,
-		topic:  topic,
+		client:    client,
+		publisher: publisher,
+		topicID:   topicID,
+		projectID: "project",
 	}
 
 	// Test data

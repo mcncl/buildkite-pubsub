@@ -44,7 +44,7 @@ func NewHandler(cfg Config) *Handler {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	var eventType string = "unknown"
+	eventType := "unknown"
 
 	// Track the request in metrics
 	defer func() {

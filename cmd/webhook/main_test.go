@@ -35,9 +35,9 @@ func TestGetPort(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.clearEnvVar {
-				os.Unsetenv("PORT")
+				_ = os.Unsetenv("PORT")
 			} else {
-				os.Setenv("PORT", tt.envPort)
+				_ = os.Setenv("PORT", tt.envPort)
 			}
 
 			if got := getPort(); got != tt.want {

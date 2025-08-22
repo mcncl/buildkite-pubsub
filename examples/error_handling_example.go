@@ -51,7 +51,7 @@ func ProcessWebhook(w http.ResponseWriter, r *http.Request, pub publisher.Publis
 	// Success response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status":  "success",
 		"message": "Event published successfully",
 	})
@@ -178,7 +178,7 @@ func handleError(w http.ResponseWriter, err error, requestID string) {
 	// Return JSON response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 
 	// If error is retryable, add Retry-After header
 	if errors.IsRetryable(err) {
