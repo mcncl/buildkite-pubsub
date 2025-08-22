@@ -269,7 +269,7 @@ func (l *stdLogger) log(level Level, msg string) {
 
 	if err != nil {
 		// Fallback if marshaling fails
-		fmt.Fprintf(l.config.Output, "ERROR MARSHALING LOG: %v\n", err)
+		_, _ = fmt.Fprintf(l.config.Output, "ERROR MARSHALING LOG: %v\n", err)
 		return
 	}
 

@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"cloud.google.com/go/pubsub/v2"
 	"github.com/mcncl/buildkite-pubsub/internal/config"
 	"github.com/mcncl/buildkite-pubsub/internal/errors"
 	"github.com/mcncl/buildkite-pubsub/internal/logging"
@@ -54,8 +55,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create publisher
-	pub, err := publisher.NewPubSubPublisher(ctx, cfg.GCP.ProjectID, cfg.GCP.TopicID)
+	// Create publisher with optimized settings from config
+	pubSettings := &pubsub.PublishSettings{
+		CountThreshold: cfg.GCP.PubSubBatchSize,
+		ByteThreshold:  1e6,  // 1MB
+		DelayThreshold: 10e6, // 10ms
+		NumGoroutines:  4,
+		FlowControlSettings: pubsub.FlowControlSettings{
+			MaxOutstandingMessages: 1000,
+			MaxOutstandingBytes:    1e9,
+			LimitExceededBehavior:  pubsub.FlowControlBlock,
+		},
+		EnableCompression:         true,
+		CompressionBytesThreshold: 1000,
+	}
+
+	pub, err := publisher.NewPubSubPublisherWithSettings(ctx, cfg.GCP.ProjectID, cfg.GCP.TopicID, pubSettings)
 	if err != nil {
 		// Wrap the error with additional context
 		if errors.IsConnectionError(err) {
@@ -72,7 +87,11 @@ func main() {
 		logger.WithError(err).Error("Publisher initialization error")
 		os.Exit(1)
 	}
-	defer pub.Close()
+	defer func() {
+		if err := pub.Close(); err != nil {
+			logger.WithError(err).Error("Failed to close publisher")
+		}
+	}()
 
 	// Create webhook handler
 	webhookHandler := webhook.NewHandler(webhook.Config{
