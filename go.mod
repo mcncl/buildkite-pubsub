@@ -1,11 +1,11 @@
 module github.com/mcncl/buildkite-pubsub
 
-go 1.23.0
+go 1.24.0
 
 toolchain go1.25.1
 
 require (
-	cloud.google.com/go/pubsub v1.50.0
+	cloud.google.com/go/pubsub v1.50.1
 	cloud.google.com/go/pubsub/v2 v2.0.0
 	github.com/google/uuid v1.6.0
 	github.com/prometheus/client_golang v1.23.1
