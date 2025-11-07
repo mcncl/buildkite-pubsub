@@ -172,10 +172,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		))
 	defer publishSpan.End()
 
-	msgID, err := h.publisher.Publish(ctx, transformed, map[string]string{
-		"origin":     "buildkite-webhook",
-		"event_type": eventType,
-	})
+	// Build comprehensive attributes for Pub/Sub filtering
+	pubsubAttributes := map[string]string{
+		"origin":      "buildkite-webhook",
+		"event_type":  eventType,
+		"pipeline":    transformed.Pipeline.Name,
+		"build_state": transformed.Build.State,
+		"branch":      transformed.Build.Branch,
+	}
+
+	msgID, err := h.publisher.Publish(ctx, transformed, pubsubAttributes)
 
 	pubDuration := time.Since(pubStart).Seconds()
 	metrics.PubsubPublishDuration.Observe(pubDuration)
