@@ -57,6 +57,8 @@ func TestHandler(t *testing.T) {
 					"url": "https://buildkite.com/test",
 					"number": 1,
 					"state": "started",
+					"branch": "main",
+					"commit": "abc123",
 					"created_at": "2024-01-09T10:00:00Z",
 					"started_at": "2024-01-09T10:00:10Z"
 				},
@@ -328,12 +330,40 @@ func TestHandler(t *testing.T) {
 
 				// Additional checks for successful publishes
 				if tt.wantPublished && lastPub != nil {
-					// Check event type
+					// Check event type attribute
 					if attrs, ok := lastPub.Attributes["event_type"]; ok {
 						if attrs != tt.wantEventType {
 							t.Errorf("Handler published wrong event type: got %v want %v",
 								attrs, tt.wantEventType)
 						}
+					} else {
+						t.Error("Missing event_type attribute")
+					}
+
+					// Check origin attribute
+					if origin, ok := lastPub.Attributes["origin"]; !ok || origin != "buildkite-webhook" {
+						t.Errorf("Handler published wrong origin: got %v want buildkite-webhook", origin)
+					}
+
+					// Check pipeline attribute
+					if pipeline, ok := lastPub.Attributes["pipeline"]; !ok {
+						t.Error("Missing pipeline attribute")
+					} else if pipeline != "Test Pipeline" {
+						t.Errorf("Handler published wrong pipeline: got %v want Test Pipeline", pipeline)
+					}
+
+					// Check build_state attribute
+					if state, ok := lastPub.Attributes["build_state"]; !ok {
+						t.Error("Missing build_state attribute")
+					} else if state != "started" {
+						t.Errorf("Handler published wrong build_state: got %v want started", state)
+					}
+
+					// Check branch attribute
+					if branch, ok := lastPub.Attributes["branch"]; !ok {
+						t.Error("Missing branch attribute")
+					} else if branch != "main" {
+						t.Errorf("Handler published wrong branch: got %v want main", branch)
 					}
 
 					// Verify response structure
@@ -361,6 +391,97 @@ func TestHandler(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestHandlerPublishAttributes verifies all Pub/Sub attributes are set correctly
+func TestHandlerPublishAttributes(t *testing.T) {
+	// Setup test registry
+	reg := prometheus.NewRegistry()
+	prometheus.DefaultRegisterer = reg
+	prometheus.DefaultGatherer = reg
+
+	if err := metrics.InitMetrics(reg); err != nil {
+		t.Fatalf("failed to initialize metrics: %v", err)
+	}
+
+	// Create mock publisher
+	mockPub := publisher.NewMockPublisher()
+
+	// Create handler
+	handler := NewHandler(Config{
+		BuildkiteToken: "test-token",
+		Publisher:      mockPub,
+	})
+
+	// Test payload with various attributes
+	payload := `{
+		"event": "build.finished",
+		"build": {
+			"id": "test-build-123",
+			"url": "https://api.buildkite.com/v2/organizations/test-org/pipelines/production-deploy/builds/456",
+			"number": 456,
+			"state": "failed",
+			"branch": "release/v2.0",
+			"commit": "def456abc123",
+			"created_at": "2024-01-09T10:00:00Z",
+			"started_at": "2024-01-09T10:01:00Z",
+			"finished_at": "2024-01-09T10:15:00Z"
+		},
+		"pipeline": {
+			"slug": "production-deploy",
+			"name": "Production Deployment"
+		},
+		"organization": {
+			"slug": "test-org"
+		}
+	}`
+
+	// Create and execute request
+	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+	req.Header.Set("X-Buildkite-Token", "test-token")
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	// Verify status
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", w.Code)
+	}
+
+	// Get published message
+	mp := mockPub.(*publisher.MockPublisher)
+	lastPub := mp.LastPublished()
+	if lastPub == nil {
+		t.Fatal("Expected message to be published")
+	}
+
+	// Verify all attributes are present and correct
+	expectedAttrs := map[string]string{
+		"origin":      "buildkite-webhook",
+		"event_type":  "build.finished",
+		"pipeline":    "Production Deployment",
+		"build_state": "failed",
+		"branch":      "release/v2.0",
+	}
+
+	for key, expectedValue := range expectedAttrs {
+		actualValue, exists := lastPub.Attributes[key]
+		if !exists {
+			t.Errorf("Missing required attribute: %s", key)
+			continue
+		}
+		if actualValue != expectedValue {
+			t.Errorf("Attribute %s: expected %q, got %q", key, expectedValue, actualValue)
+		}
+	}
+
+	// Verify no unexpected attributes (optional, but good practice)
+	for key := range lastPub.Attributes {
+		if _, expected := expectedAttrs[key]; !expected {
+			t.Errorf("Unexpected attribute: %s", key)
+		}
 	}
 }
 
