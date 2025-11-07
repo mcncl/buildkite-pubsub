@@ -15,7 +15,7 @@ This guide explains how to set up distributed tracing for the buildkite-pubsub w
 The buildkite-pubsub service supports distributed tracing using OpenTelemetry. Traces show the complete request flow:
 
 - `POST /webhook` - HTTP request span with method, status, duration
-- `transform_payload` - Payload processing with event type and build ID attributes  
+- `transform_payload` - Payload processing with event type and build ID attributes
 - `pubsub_publish` - Message publishing with pipeline and organization attributes
 
 ## Honeycomb Setup
@@ -153,39 +153,6 @@ curl -X POST http://localhost:8888/webhook \
 
 Check your observability platform for traces within 1-2 minutes.
 
-## Troubleshooting
-
-### Common Issues
-
-#### 1. No Traces Appearing
-- **Check logs** for export errors:
-```bash
-gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="buildkite-webhook"' --limit=10
-```
-
-- **Verify environment variables** are set correctly
-- **Check API key** has proper permissions
-- **Wait 1-2 minutes** for traces to appear
-
-#### 2. Connection Refused Errors
-```
-dial tcp 127.0.0.1:4317: connect: connection refused
-```
-
-This indicates the service is trying to connect to localhost instead of your configured endpoint:
-- Ensure `OTEL_EXPORTER_OTLP_ENDPOINT` is set correctly
-- Redeploy the service to pick up environment changes
-- Check that traffic is routed to the latest revision
-
-#### 3. Authentication Errors
-```
-rpc error: code = Unauthenticated
-```
-
-- Verify your API key is correct
-- Check header format: `x-honeycomb-team=YOUR_API_KEY`
-- Ensure API key has **Send Events** permissions
-
 ### Debug Mode
 
 Enable debug logging temporarily:
@@ -206,14 +173,6 @@ sdktrace.WithSampler(sdktrace.TraceIDRatioBased(0.1)), // 10% sampling
 ```
 
 2. **Rebuild and deploy** the service
-
-## Best Practices
-
-1. **Use different environments** for dev/staging/production
-2. **Monitor trace volume** and adjust sampling as needed
-3. **Include relevant attributes** in spans for debugging
-4. **Set up alerts** on trace errors or high latency
-5. **Document trace dependencies** for your team
 
 ## Integration Examples
 

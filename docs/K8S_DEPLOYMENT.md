@@ -182,28 +182,6 @@ curl -X POST \
   -d '{"event":"ping"}'
 ```
 
-## Troubleshooting
-
-### Common Issues
-
-1. **Pods not starting**
-   ```bash
-   kubectl logs -n buildkite-webhook -l app=buildkite-webhook
-   kubectl describe pod -n buildkite-webhook -l app=buildkite-webhook
-   ```
-
-2. **Service connection issues**
-   ```bash
-   kubectl get endpoints -n buildkite-webhook
-   kubectl describe svc buildkite-webhook -n buildkite-webhook
-   ```
-
-3. **Ingress problems**
-   ```bash
-   kubectl describe ingress -n buildkite-webhook
-   kubectl get events -n buildkite-webhook
-   ```
-
 ### Health Checks
 
 ```bash

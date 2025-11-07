@@ -171,25 +171,6 @@ gsutil lifecycle set lifecycle-policy.json gs://buildkite-events-archive
    - Set up alerts for processing failures
    - Track subscription backlogs
 
-## Troubleshooting
-
-### Common Issues
-
-1. **Messages Not Arriving**
-   - Check webhook logs for delivery issues
-   - Verify subscription filters
-   - Check Pub/Sub quotas and permissions
-
-2. **Processing Delays**
-   - Monitor subscription backlog
-   - Check processor scaling settings
-   - Verify resource allocation
-
-3. **Data Issues**
-   - Validate event schema
-   - Check for missing fields
-   - Verify data transformations
-
 ### Debug Tools
 
 1. **Pub/Sub**
