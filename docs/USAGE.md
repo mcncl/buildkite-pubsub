@@ -161,12 +161,35 @@ gsutil lifecycle set lifecycle-policy.json gs://buildkite-events-archive
 
 ### Security
 
-1. **Access Control**
+1. **Webhook Authentication**
+   
+   The service supports two authentication methods:
+   
+   **Token-based (Simple)**
+   ```bash
+   # Set in Buildkite webhook configuration
+   export BUILDKITE_WEBHOOK_TOKEN="your-token-here"
+   ```
+   
+   **HMAC Signature (Recommended)**
+   ```bash
+   # More secure - prevents token interception
+   export BUILDKITE_WEBHOOK_HMAC_SECRET="your-secret-here"
+   ```
+   
+   HMAC signatures provide:
+   - Protection against man-in-the-middle attacks
+   - Timestamp validation (prevents replay attacks)
+   - Cryptographic verification of message integrity
+   
+   Configure in Buildkite UI by selecting "Webhook Signature" and entering your secret.
+
+2. **Access Control**
    - Use service accounts with minimal permissions
    - Rotate credentials regularly
    - Encrypt sensitive data
 
-2. **Monitoring**
+3. **Monitoring**
    - Monitor message processing latency
    - Set up alerts for processing failures
    - Track subscription backlogs

@@ -45,7 +45,8 @@ This service connects Buildkite's webhook system to Google Cloud Pub/Sub, allowi
   - Reliable delivery with retries
 
 - 🔒 **Security**
-  - Webhook token validation
+  - Webhook authentication (token or HMAC-SHA256 signature)
+  - Replay attack protection with timestamp validation
   - Rate limiting (global and per-IP)
   - TLS termination
   - Security headers
