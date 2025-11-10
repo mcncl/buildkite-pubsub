@@ -136,6 +136,7 @@ func main() {
 	// Create webhook handler
 	webhookHandler := webhook.NewHandler(webhook.Config{
 		BuildkiteToken: cfg.Webhook.Token,
+		HMACSecret:     cfg.Webhook.HMACSecret,
 		Publisher:      pub,
 	})
 
