@@ -29,8 +29,13 @@ gcp:
 
 # Buildkite webhook configuration
 webhook:
-  # Required: Buildkite webhook token for authentication
+  # Required: Either token OR hmac_secret must be provided
+  # Use token for simple bearer token authentication
   token: "your-webhook-token"
+
+  # Or use hmac_secret for HMAC-SHA256 signature verification (more secure)
+  # When both are provided, HMAC signature takes precedence
+  # hmac_secret: "your-hmac-secret"
 
   # Optional: Path to handle webhook requests (default: "/webhook")
   path: "/webhook"
@@ -93,6 +98,7 @@ security:
     - "Authorization"
     - "X-CSRF-Token"
     - "X-Buildkite-Token"
+    - "X-Buildkite-Signature"
     - "X-Request-ID"
 
   # Optional: Whether to enable CSRF protection (default: false)
