@@ -3,11 +3,16 @@ package webhook
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/mcncl/buildkite-pubsub/internal/errors"
 	"github.com/mcncl/buildkite-pubsub/internal/metrics"
@@ -508,4 +513,257 @@ func metricExists(metricName string) bool {
 		}
 	}
 	return false
+}
+
+// Helper function to generate HMAC signature for testing
+func generateTestHMACSignature(secret, timestamp, body string) string {
+	message := fmt.Sprintf("%s.%s", timestamp, body)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(message))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func TestHandlerWithHMACSignature(t *testing.T) {
+	hmacSecret := "test-hmac-secret"
+	payload := `{
+		"event": "build.started",
+		"build": {
+			"id": "123",
+			"url": "https://buildkite.com/test",
+			"number": 1,
+			"state": "started",
+			"branch": "main",
+			"commit": "abc123",
+			"created_at": "2024-01-09T10:00:00Z",
+			"started_at": "2024-01-09T10:00:10Z"
+		},
+		"pipeline": {
+			"slug": "test",
+			"name": "Test Pipeline"
+		},
+		"organization": {
+			"slug": "org"
+		}
+	}`
+
+	tests := []struct {
+		name          string
+		hmacSecret    string
+		timestamp     string
+		generateSig   bool
+		customSig     string
+		wantStatus    int
+		wantPublished bool
+	}{
+		{
+			name:          "valid HMAC signature",
+			hmacSecret:    hmacSecret,
+			timestamp:     strconv.FormatInt(time.Now().Unix(), 10),
+			generateSig:   true,
+			wantStatus:    http.StatusOK,
+			wantPublished: true,
+		},
+		{
+			name:          "invalid HMAC signature",
+			hmacSecret:    hmacSecret,
+			timestamp:     strconv.FormatInt(time.Now().Unix(), 10),
+			generateSig:   false,
+			customSig:     "invalid-signature",
+			wantStatus:    http.StatusUnauthorized,
+			wantPublished: false,
+		},
+		{
+			name:          "expired timestamp",
+			hmacSecret:    hmacSecret,
+			timestamp:     strconv.FormatInt(time.Now().Unix()-400, 10), // 400 seconds ago
+			generateSig:   true,
+			wantStatus:    http.StatusUnauthorized,
+			wantPublished: false,
+		},
+		{
+			name:          "future timestamp",
+			hmacSecret:    hmacSecret,
+			timestamp:     strconv.FormatInt(time.Now().Unix()+400, 10), // 400 seconds in future
+			generateSig:   true,
+			wantStatus:    http.StatusUnauthorized,
+			wantPublished: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup test registry
+			reg := prometheus.NewRegistry()
+			prometheus.DefaultRegisterer = reg
+			prometheus.DefaultGatherer = reg
+
+			if err := metrics.InitMetrics(reg); err != nil {
+				t.Fatalf("failed to initialize metrics: %v", err)
+			}
+
+			// Create mock publisher
+			mockPub := publisher.NewMockPublisher()
+
+			// Create handler with HMAC secret
+			handler := NewHandler(Config{
+				BuildkiteToken: "", // No token, using HMAC
+				HMACSecret:     tt.hmacSecret,
+				Publisher:      mockPub,
+			})
+
+			// Generate or use custom signature
+			var signature string
+			if tt.generateSig {
+				signature = generateTestHMACSignature(tt.hmacSecret, tt.timestamp, payload)
+			} else {
+				signature = tt.customSig
+			}
+
+			headerValue := fmt.Sprintf("timestamp=%s,signature=%s", tt.timestamp, signature)
+
+			// Create request
+			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+			req.Header.Set("X-Buildkite-Signature", headerValue)
+			req.Header.Set("Content-Type", "application/json")
+
+			// Record response
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			// Check status code
+			if w.Code != tt.wantStatus {
+				t.Errorf("Handler returned wrong status code: got %v want %v", w.Code, tt.wantStatus)
+			}
+
+			// Check publication status
+			mp := mockPub.(*publisher.MockPublisher)
+			lastPub := mp.LastPublished()
+			hasPublished := lastPub != nil
+			if hasPublished != tt.wantPublished {
+				t.Errorf("Handler published = %v, want %v", hasPublished, tt.wantPublished)
+			}
+		})
+	}
+}
+
+func TestHandlerHMACAndTokenFallback(t *testing.T) {
+	token := "test-token"
+	hmacSecret := "test-hmac-secret"
+	payload := `{
+		"event": "build.started",
+		"build": {
+			"id": "123",
+			"url": "https://buildkite.com/test",
+			"number": 1,
+			"state": "started",
+			"created_at": "2024-01-09T10:00:00Z",
+			"started_at": "2024-01-09T10:00:10Z"
+		},
+		"pipeline": {
+			"slug": "test",
+			"name": "Test Pipeline"
+		},
+		"organization": {
+			"slug": "org"
+		}
+	}`
+
+	tests := []struct {
+		name          string
+		useHMAC       bool
+		useToken      bool
+		tokenValue    string
+		wantStatus    int
+		wantPublished bool
+	}{
+		{
+			name:          "HMAC takes precedence when both present",
+			useHMAC:       true,
+			useToken:      true,
+			tokenValue:    token,
+			wantStatus:    http.StatusOK,
+			wantPublished: true,
+		},
+		{
+			name:          "Falls back to token when no HMAC",
+			useHMAC:       false,
+			useToken:      true,
+			tokenValue:    token,
+			wantStatus:    http.StatusOK,
+			wantPublished: true,
+		},
+		{
+			name:          "Token fails when wrong and no HMAC",
+			useHMAC:       false,
+			useToken:      true,
+			tokenValue:    "wrong-token",
+			wantStatus:    http.StatusUnauthorized,
+			wantPublished: false,
+		},
+		{
+			name:          "Fails when neither present",
+			useHMAC:       false,
+			useToken:      false,
+			wantStatus:    http.StatusUnauthorized,
+			wantPublished: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup test registry
+			reg := prometheus.NewRegistry()
+			prometheus.DefaultRegisterer = reg
+			prometheus.DefaultGatherer = reg
+
+			if err := metrics.InitMetrics(reg); err != nil {
+				t.Fatalf("failed to initialize metrics: %v", err)
+			}
+
+			// Create mock publisher
+			mockPub := publisher.NewMockPublisher()
+
+			// Create handler with both token and HMAC secret
+			handler := NewHandler(Config{
+				BuildkiteToken: token,
+				HMACSecret:     hmacSecret,
+				Publisher:      mockPub,
+			})
+
+			// Create request
+			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+
+			// Add HMAC signature if requested
+			if tt.useHMAC {
+				timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+				signature := generateTestHMACSignature(hmacSecret, timestamp, payload)
+				headerValue := fmt.Sprintf("timestamp=%s,signature=%s", timestamp, signature)
+				req.Header.Set("X-Buildkite-Signature", headerValue)
+			}
+
+			// Add token if requested
+			if tt.useToken {
+				req.Header.Set("X-Buildkite-Token", tt.tokenValue)
+			}
+
+			req.Header.Set("Content-Type", "application/json")
+
+			// Record response
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			// Check status code
+			if w.Code != tt.wantStatus {
+				t.Errorf("Handler returned wrong status code: got %v want %v", w.Code, tt.wantStatus)
+			}
+
+			// Check publication status
+			mp := mockPub.(*publisher.MockPublisher)
+			lastPub := mp.LastPublished()
+			hasPublished := lastPub != nil
+			if hasPublished != tt.wantPublished {
+				t.Errorf("Handler published = %v, want %v", hasPublished, tt.wantPublished)
+			}
+		})
+	}
 }

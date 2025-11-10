@@ -29,6 +29,7 @@ type ErrorResponse struct {
 // Config holds the configuration for the webhook handler
 type Config struct {
 	BuildkiteToken string
+	HMACSecret     string
 	Publisher      publisher.Publisher
 }
 
@@ -40,8 +41,15 @@ type Handler struct {
 
 // NewHandler creates a new webhook handler
 func NewHandler(cfg Config) *Handler {
+	var validator *buildkite.Validator
+	if cfg.HMACSecret != "" {
+		validator = buildkite.NewValidatorWithHMAC(cfg.BuildkiteToken, cfg.HMACSecret)
+	} else {
+		validator = buildkite.NewValidator(cfg.BuildkiteToken)
+	}
+
 	return &Handler{
-		validator: buildkite.NewValidator(cfg.BuildkiteToken),
+		validator: validator,
 		publisher: cfg.Publisher,
 	}
 }
