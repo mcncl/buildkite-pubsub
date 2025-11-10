@@ -38,6 +38,7 @@ type GCPConfig struct {
 // WebhookConfig holds Buildkite webhook related configuration
 type WebhookConfig struct {
 	Token                      string        `json:"token" yaml:"token"`
+	HMACSecret                 string        `json:"hmac_secret" yaml:"hmac_secret"`
 	Path                       string        `json:"path" yaml:"path"`
 	EnableIPAllowlist          bool          `json:"enable_ip_allowlist" yaml:"enable_ip_allowlist"`
 	IPAllowlistRefreshToken    string        `json:"ip_allowlist_refresh_token" yaml:"ip_allowlist_refresh_token"`
@@ -124,9 +125,9 @@ func (c *Config) Validate() error {
 		return errors.NewValidationError("GCP.TopicID cannot be empty")
 	}
 
-	// Check required Webhook fields
-	if c.Webhook.Token == "" {
-		return errors.NewValidationError("Webhook.Token cannot be empty")
+	// Check required Webhook fields - either Token or HMACSecret must be provided
+	if c.Webhook.Token == "" && c.Webhook.HMACSecret == "" {
+		return errors.NewValidationError("Webhook.Token or Webhook.HMACSecret must be provided")
 	}
 
 	// Check Server fields
@@ -196,6 +197,9 @@ func LoadFromEnv() (*Config, error) {
 	// Load Webhook config
 	if val := os.Getenv("BUILDKITE_WEBHOOK_TOKEN"); val != "" {
 		cfg.Webhook.Token = val
+	}
+	if val := os.Getenv("BUILDKITE_WEBHOOK_HMAC_SECRET"); val != "" {
+		cfg.Webhook.HMACSecret = val
 	}
 	if val := os.Getenv("WEBHOOK_PATH"); val != "" {
 		cfg.Webhook.Path = val
@@ -303,6 +307,7 @@ func LoadFromFile(path string) (*Config, error) {
 		} `json:"gcp" yaml:"gcp"`
 		Webhook struct {
 			Token                      string `json:"token" yaml:"token"`
+			HMACSecret                 string `json:"hmac_secret" yaml:"hmac_secret"`
 			Path                       string `json:"path" yaml:"path"`
 			EnableIPAllowlist          bool   `json:"enable_ip_allowlist" yaml:"enable_ip_allowlist"`
 			IPAllowlistRefreshToken    string `json:"ip_allowlist_refresh_token" yaml:"ip_allowlist_refresh_token"`
@@ -366,6 +371,7 @@ func LoadFromFile(path string) (*Config, error) {
 	cfg.GCP.PubSubRetryMaxAttempts = tempCfg.GCP.PubSubRetryMaxAttempts
 
 	cfg.Webhook.Token = tempCfg.Webhook.Token
+	cfg.Webhook.HMACSecret = tempCfg.Webhook.HMACSecret
 	cfg.Webhook.Path = tempCfg.Webhook.Path
 	cfg.Webhook.EnableIPAllowlist = tempCfg.Webhook.EnableIPAllowlist
 	cfg.Webhook.IPAllowlistRefreshToken = tempCfg.Webhook.IPAllowlistRefreshToken
@@ -464,6 +470,9 @@ func MergeConfigs(base, override *Config) *Config {
 	// Webhook config
 	if override.Webhook.Token != "" {
 		result.Webhook.Token = override.Webhook.Token
+	}
+	if override.Webhook.HMACSecret != "" {
+		result.Webhook.HMACSecret = override.Webhook.HMACSecret
 	}
 	if override.Webhook.Path != "" {
 		result.Webhook.Path = override.Webhook.Path
@@ -577,6 +586,9 @@ func (c *Config) String() string {
 	// Mask sensitive fields
 	if copy.Webhook.Token != "" {
 		copy.Webhook.Token = "********"
+	}
+	if copy.Webhook.HMACSecret != "" {
+		copy.Webhook.HMACSecret = "********"
 	}
 	if copy.Webhook.IPAllowlistRefreshToken != "" {
 		copy.Webhook.IPAllowlistRefreshToken = "********"

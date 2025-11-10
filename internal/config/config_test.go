@@ -274,7 +274,7 @@ func TestValidateConfig(t *testing.T) {
 			wantError: true,
 		},
 		{
-			name: "missing webhook token",
+			name: "missing webhook token and HMAC secret",
 			config: Config{
 				GCP: GCPConfig{
 					ProjectID: "valid-project",
@@ -283,6 +283,53 @@ func TestValidateConfig(t *testing.T) {
 				Webhook: WebhookConfig{},
 			},
 			wantError: true,
+		},
+		{
+			name: "valid config with HMAC secret only",
+			config: Config{
+				GCP: GCPConfig{
+					ProjectID: "valid-project",
+					TopicID:   "valid-topic",
+				},
+				Webhook: WebhookConfig{
+					HMACSecret: "valid-hmac-secret",
+				},
+				Server: ServerConfig{
+					Port:           8080,
+					LogLevel:       "info",
+					MaxRequestSize: 1024 * 1024,
+					RequestTimeout: 30 * time.Second,
+				},
+				Security: SecurityConfig{
+					RateLimit:   60,
+					IPRateLimit: 30,
+				},
+			},
+			wantError: false,
+		},
+		{
+			name: "valid config with both token and HMAC secret",
+			config: Config{
+				GCP: GCPConfig{
+					ProjectID: "valid-project",
+					TopicID:   "valid-topic",
+				},
+				Webhook: WebhookConfig{
+					Token:      "valid-token",
+					HMACSecret: "valid-hmac-secret",
+				},
+				Server: ServerConfig{
+					Port:           8080,
+					LogLevel:       "info",
+					MaxRequestSize: 1024 * 1024,
+					RequestTimeout: 30 * time.Second,
+				},
+				Security: SecurityConfig{
+					RateLimit:   60,
+					IPRateLimit: 30,
+				},
+			},
+			wantError: false,
 		},
 		{
 			name: "invalid port (too low)",
