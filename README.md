@@ -1,4 +1,4 @@
-# Buildkite PubSub 
+# Buildkite PubSub
 
 A webhook handler that securely forwards Buildkite build events to Google Cloud Pub/Sub, enabling event-driven architectures and integrations with your Buildkite pipelines.
 
@@ -7,6 +7,7 @@ A webhook handler that securely forwards Buildkite build events to Google Cloud 
 ## Overview
 
 This service connects Buildkite's webhook system to Google Cloud Pub/Sub, allowing you to:
+
 - Receive Buildkite build events (status changes, pipeline updates, etc.)
 - Forward events securely to Pub/Sub topics
 - Monitor and alert on webhook delivery
@@ -25,44 +26,19 @@ This service connects Buildkite's webhook system to Google Cloud Pub/Sub, allowi
 
 ## Documentation
 
-1. **Getting Started**
-   - [Quick Start Guide](docs/QUICK_START.md) - Complete deployment walkthrough
-   - [Google Cloud Setup](docs/GCP_SETUP.md) - Service account and permissions setup
+### Getting Started
 
-2. **Usage & Integration**
-   - [Usage Guide](docs/USAGE.md) - Event patterns and examples
-   - [Event Schema](docs/USAGE.md#event-structure) - Event payloads and attributes
-   - [Distributed Tracing](docs/DISTRIBUTED_TRACING.md) - OpenTelemetry setup with Honeycomb/Jaeger
-   - [Monitoring](docs/MONITORING.md) - Metrics, alerts, and debugging
-   - [Event Filtering](docs/EVENTS.md) - Pub/Sub subscription examples
+- [Quick Start Guide](docs/QUICK_START.md) - Get up and running in minutes
+- [Google Cloud Setup](docs/GCP_SETUP.md) - Configure GCP project and permissions
+- [Testing Guide](docs/TESTING.md) - Local development through production testing
 
-## Features
+### Operations
 
-- 🔄 **Event Handling**
-  - Standardized event transformation
-  - Support for all Buildkite event types
-  - Configurable event filtering
-  - Reliable delivery with retries
+- [Usage Guide](docs/USAGE.md) - Event patterns and integration examples
+- [Monitoring](docs/MONITORING.md) - Metrics, dashboards, and alerts
+- [Kubernetes Deployment](docs/K8S_DEPLOYMENT.md) - Production deployment configuration
 
-- 🔒 **Security**
-  - Webhook authentication (token or HMAC-SHA256 signature)
-  - Replay attack protection with timestamp validation
-  - Rate limiting (global and per-IP)
-  - TLS termination
-  - Security headers
-
-- 📊 **Observability**
-  - Prometheus metrics
-  - Distributed tracing (OpenTelemetry)
-  - Grafana dashboards
-  - Health checks
-  - Alert templates
-
-- 🚀 **Deployment**
-  - Kubernetes manifests
-  - Horizontal scaling
-  - Resource management
-  - Zero-downtime updates
+See [docs/](docs/) for complete documentation including architecture, distributed tracing, event schemas, and more.
 
 ## Local Development
 
@@ -80,6 +56,7 @@ docker build -t buildkite-webhook .
 ## Deployment
 
 Follow the [Quick Start Guide](docs/QUICK_START.md) for complete deployment instructions, or see individual guides:
+
 - [GCP Setup Guide](docs/GCP_SETUP.md) for Google Cloud configuration
 - [Usage Guide](docs/USAGE.md) for event handling patterns
 

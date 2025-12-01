@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -172,7 +173,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	transformedJSON, _ := json.Marshal(transformed)
 	metrics.RecordPubsubMessageSize(eventType, len(transformedJSON))
 
-	// Publish to Pub/Sub
+	// Publish to Pub/Sub with retry logic
 	ctx, publishSpan := tracer.Start(ctx, "pubsub_publish",
 		trace.WithAttributes(
 			attribute.String("event_type", eventType),
@@ -189,7 +190,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"branch":      transformed.Build.Branch,
 	}
 
-	msgID, err := h.publisher.Publish(ctx, transformed, pubsubAttributes)
+	// Publish with retry logic (max 3 retries by default)
+	msgID, err := h.publishWithRetry(ctx, transformed, pubsubAttributes, 3)
 
 	pubDuration := time.Since(pubStart).Seconds()
 	metrics.PubsubPublishDuration.Observe(pubDuration)
@@ -331,4 +333,77 @@ func (h *Handler) sendJSONResponse(w http.ResponseWriter, statusCode int, data i
 		// If we can't encode the response, log it but there's not much we can do at this point
 		metrics.ErrorsTotal.WithLabelValues("json_encode_error").Inc()
 	}
+}
+
+// publishWithRetry attempts to publish a message to Pub/Sub with exponential backoff retry logic.
+// It will retry on retryable errors (connection, publish, rate limit) up to maxRetries times.
+// Non-retryable errors (auth, validation) fail immediately without retry.
+func (h *Handler) publishWithRetry(ctx context.Context, data interface{}, attributes map[string]string, maxRetries int) (string, error) {
+	// Define exponential backoff durations
+	backoffDurations := []time.Duration{
+		100 * time.Millisecond,
+		500 * time.Millisecond,
+		1 * time.Second,
+		2 * time.Second,
+		5 * time.Second,
+		10 * time.Second,
+	}
+
+	var lastErr error
+	eventType := attributes["event_type"]
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Check context cancellation before attempting
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+
+		// Attempt to publish
+		msgID, err := h.publisher.Publish(ctx, data, attributes)
+		if err == nil {
+			// Success!
+			return msgID, nil
+		}
+
+		// Store the error
+		lastErr = err
+
+		// Check if error is retryable
+		if !errors.IsRetryable(err) {
+			// Non-retryable error (auth, validation, etc.) - fail immediately
+			return "", err
+		}
+
+		// If we've exhausted retries, return the last error
+		if attempt >= maxRetries {
+			return "", lastErr
+		}
+
+		// Record retry metric
+		if eventType != "" {
+			metrics.RecordPubsubRetry(eventType)
+		}
+
+		// Calculate backoff duration for this attempt
+		backoffDuration := backoffDurations[0] // Default to minimum backoff
+		if attempt < len(backoffDurations) {
+			backoffDuration = backoffDurations[attempt]
+		} else {
+			// If we've exceeded our predefined backoff durations, use the maximum
+			backoffDuration = backoffDurations[len(backoffDurations)-1]
+		}
+
+		// Wait with backoff, respecting context cancellation
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(backoffDuration):
+			// Continue to next retry attempt
+		}
+	}
+
+	// Should never reach here, but return last error just in case
+	return "", lastErr
 }
