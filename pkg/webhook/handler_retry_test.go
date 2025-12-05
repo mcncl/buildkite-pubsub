@@ -307,7 +307,6 @@ func TestPublishWithRetry_ExponentialBackoff(t *testing.T) {
 	testAttrs := map[string]string{"event_type": "build.started"}
 
 	_, err := handler.publishWithRetry(ctx, testData, testAttrs, 5)
-
 	if err != nil {
 		t.Fatalf("Expected success after retries: %v", err)
 	}
@@ -681,7 +680,6 @@ func TestPublishWithRetry_LargeMaxRetries(t *testing.T) {
 
 	// Large max retries, but should succeed on 3rd attempt
 	_, err := handler.publishWithRetry(ctx, testData, testAttrs, 100)
-
 	if err != nil {
 		t.Errorf("Expected success with large max retries: %v", err)
 	}

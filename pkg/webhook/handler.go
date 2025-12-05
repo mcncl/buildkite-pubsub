@@ -387,7 +387,7 @@ func (h *Handler) publishWithRetry(ctx context.Context, data interface{}, attrib
 		}
 
 		// Calculate backoff duration for this attempt
-		backoffDuration := backoffDurations[0] // Default to minimum backoff
+		var backoffDuration time.Duration
 		if attempt < len(backoffDurations) {
 			backoffDuration = backoffDurations[attempt]
 		} else {
