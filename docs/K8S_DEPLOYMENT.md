@@ -60,7 +60,12 @@ kubectl create configmap buildkite-webhook-config \
   --namespace buildkite-webhook \
   --from-literal=project_id="your-project-id" \
   --from-literal=topic_id="buildkite-events"
+
+# Optional: Add DLQ topic for failed messages
+# --from-literal=dlq_topic_id="buildkite-events-dlq"
 ```
+
+To enable the Dead Letter Queue, uncomment the DLQ environment variables in `k8s/deployment.yaml`.
 
 ### 3. Build and Deploy Application
 
@@ -74,7 +79,7 @@ docker tag buildkite-webhook localhost:5000/buildkite-webhook:latest
 docker push localhost:5000/buildkite-webhook:latest
 
 # Deploy the application
-kubectl apply -f k8s/buildkite-webhook/
+kubectl apply -f k8s/
 ```
 
 ### 4. Deploy Monitoring Stack
@@ -109,17 +114,17 @@ kubectl create secret tls buildkite-webhook-tls \
 
 ```bash
 # Update ingress.yaml with your domain
-vim k8s/buildkite-webhook/ingress.yaml
+vim k8s/ingress.yaml
 
 # Apply ingress configuration
-kubectl apply -f k8s/buildkite-webhook/ingress.yaml
+kubectl apply -f k8s/ingress.yaml
 ```
 
 ### 3. Configure HPA (Horizontal Pod Autoscaling)
 
 ```bash
 # Apply HPA configuration
-kubectl apply -f k8s/buildkite-webhook/hpa.yaml
+kubectl apply -f k8s/hpa.yaml
 ```
 
 ### 4. Verify Deployment
@@ -198,7 +203,7 @@ To remove all deployed resources:
 
 ```bash
 # Use provided cleanup script
-./cleanup.sh
+./scripts/cleanup
 
 # Or manually:
 kubectl delete namespace buildkite-webhook

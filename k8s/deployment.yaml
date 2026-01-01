@@ -19,6 +19,25 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
           env:
             - name: PROJECT_ID
               valueFrom:
@@ -37,6 +56,15 @@ spec:
                   key: buildkite-token
             - name: GOOGLE_APPLICATION_CREDENTIALS
               value: /var/secrets/google/credentials.json
+            # Optional: Dead Letter Queue configuration
+            # Uncomment to enable DLQ for failed messages
+            # - name: ENABLE_DLQ
+            #   value: "true"
+            # - name: DLQ_TOPIC_ID
+            #   valueFrom:
+            #     configMapKeyRef:
+            #       name: buildkite-webhook-config
+            #       key: dlq_topic_id
           volumeMounts:
             - name: google-cloud-key
               mountPath: /var/secrets/google
