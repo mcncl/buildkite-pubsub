@@ -43,6 +43,10 @@ var (
 	// Dead Letter Queue metrics
 	DLQMessagesTotal *prometheus.CounterVec // Messages sent to DLQ
 
+	// Circuit Breaker metrics
+	CircuitBreakerState   *prometheus.GaugeVec   // Current circuit breaker state (0=closed, 1=open, 2=half-open)
+	CircuitBreakerTrips   *prometheus.CounterVec // Number of times circuit breaker tripped
+
 	// Mutex to protect metric initialization
 	initMutex sync.Mutex
 )
@@ -254,6 +258,23 @@ func InitMetrics(reg prometheus.Registerer) error {
 		[]string{"event_type", "failure_reason"},
 	)
 
+	// Circuit Breaker metrics
+	CircuitBreakerState = factory.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "buildkite_circuit_breaker_state",
+			Help: "Current circuit breaker state (0=closed, 1=open, 2=half-open)",
+		},
+		[]string{"name"},
+	)
+
+	CircuitBreakerTrips = factory.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "buildkite_circuit_breaker_trips_total",
+			Help: "Total number of times the circuit breaker has tripped (opened)",
+		},
+		[]string{"name"},
+	)
+
 	return nil
 }
 
@@ -333,4 +354,15 @@ func RecordPubsubBatchSize(batchSize int) {
 // RecordDLQMessage records a message sent to the Dead Letter Queue
 func RecordDLQMessage(eventType, failureReason string) {
 	DLQMessagesTotal.WithLabelValues(eventType, failureReason).Inc()
+}
+
+// RecordCircuitBreakerState records the current state of a circuit breaker
+// state: 0=closed, 1=open, 2=half-open
+func RecordCircuitBreakerState(name string, state int) {
+	CircuitBreakerState.WithLabelValues(name).Set(float64(state))
+}
+
+// RecordCircuitBreakerTrip records when a circuit breaker trips open
+func RecordCircuitBreakerTrip(name string) {
+	CircuitBreakerTrips.WithLabelValues(name).Inc()
 }
