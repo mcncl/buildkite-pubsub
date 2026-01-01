@@ -15,3 +15,17 @@ steps:
       - docker-compose#v5.12.1:
           run: test
           config: compose.ci.yml
+
+  - label: "🔒 Security Scan"
+    key: "security"
+    plugins:
+      - docker-compose#v5.12.1:
+          run: gosec
+          config: compose.ci.yml
+      - docker-compose#v5.12.1:
+          run: govulncheck
+          config: compose.ci.yml
+    artifact_paths:
+      - "gosec-report.json"
+    soft_fail:
+      - exit_status: 1

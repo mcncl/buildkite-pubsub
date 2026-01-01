@@ -28,6 +28,17 @@ services:
       service: dev
     command: gofumpt -l .
 
+  # Security scanning
+  gosec:
+    extends:
+      service: dev
+    command: gosec -fmt json -out /app/gosec-report.json -stdout -verbose=text ./...
+
+  govulncheck:
+    extends:
+      service: dev
+    command: govulncheck ./...
+
   goreleaser:
     profiles:
       - release
