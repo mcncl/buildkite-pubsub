@@ -10,6 +10,8 @@ This service connects Buildkite's webhook system to Google Cloud Pub/Sub, allowi
 
 - Receive Buildkite build events (status changes, pipeline updates, etc.)
 - Forward events securely to Pub/Sub topics
+- Handle failures gracefully with Dead Letter Queue support
+- Protect against cascading failures with Circuit Breaker pattern
 - Monitor and alert on webhook delivery
 - Filter and process events using Pub/Sub subscriptions
 - Build event-driven workflows and integrations
@@ -62,11 +64,9 @@ Follow the [Quick Start Guide](docs/QUICK_START.md) for complete deployment inst
 
 ## Contributing
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -am 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+For security vulnerabilities, please see [SECURITY.md](SECURITY.md).
 
 ## License
 
