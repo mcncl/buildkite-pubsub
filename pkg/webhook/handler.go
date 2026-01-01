@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/mcncl/buildkite-pubsub/internal/buildkite"
@@ -32,12 +33,17 @@ type Config struct {
 	BuildkiteToken string
 	HMACSecret     string
 	Publisher      publisher.Publisher
+	// DLQ configuration
+	DLQPublisher publisher.Publisher // Optional: publisher for dead letter queue
+	EnableDLQ    bool                // Whether to enable dead letter queue
 }
 
 // Handler handles incoming Buildkite webhooks
 type Handler struct {
-	validator *buildkite.Validator
-	publisher publisher.Publisher
+	validator    *buildkite.Validator
+	publisher    publisher.Publisher
+	dlqPublisher publisher.Publisher
+	enableDLQ    bool
 }
 
 // NewHandler creates a new webhook handler
@@ -50,8 +56,10 @@ func NewHandler(cfg Config) *Handler {
 	}
 
 	return &Handler{
-		validator: validator,
-		publisher: cfg.Publisher,
+		validator:    validator,
+		publisher:    cfg.Publisher,
+		dlqPublisher: cfg.DLQPublisher,
+		enableDLQ:    cfg.EnableDLQ,
 	}
 }
 
@@ -338,6 +346,7 @@ func (h *Handler) sendJSONResponse(w http.ResponseWriter, statusCode int, data i
 // publishWithRetry attempts to publish a message to Pub/Sub with exponential backoff retry logic.
 // It will retry on retryable errors (connection, publish, rate limit) up to maxRetries times.
 // Non-retryable errors (auth, validation) fail immediately without retry.
+// If all retries are exhausted and DLQ is enabled, the message is sent to the Dead Letter Queue.
 func (h *Handler) publishWithRetry(ctx context.Context, data interface{}, attributes map[string]string, maxRetries int) (string, error) {
 	// Define exponential backoff durations
 	backoffDurations := []time.Duration{
@@ -351,6 +360,7 @@ func (h *Handler) publishWithRetry(ctx context.Context, data interface{}, attrib
 
 	var lastErr error
 	eventType := attributes["event_type"]
+	retryCount := 0
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		// Check context cancellation before attempting
@@ -376,10 +386,14 @@ func (h *Handler) publishWithRetry(ctx context.Context, data interface{}, attrib
 			return "", err
 		}
 
-		// If we've exhausted retries, return the last error
+		// If we've exhausted retries, try DLQ then return error
 		if attempt >= maxRetries {
+			// Send to Dead Letter Queue if enabled
+			h.sendToDLQ(ctx, data, attributes, lastErr, retryCount)
 			return "", lastErr
 		}
+
+		retryCount++
 
 		// Record retry metric
 		if eventType != "" {
@@ -406,4 +420,69 @@ func (h *Handler) publishWithRetry(ctx context.Context, data interface{}, attrib
 
 	// Should never reach here, but return last error just in case
 	return "", lastErr
+}
+
+// sendToDLQ sends a failed message to the Dead Letter Queue.
+// This is a best-effort operation - errors are logged but don't affect the main flow.
+func (h *Handler) sendToDLQ(ctx context.Context, data interface{}, originalAttrs map[string]string, failureErr error, retryCount int) {
+	// Skip if DLQ is not enabled or publisher is not configured
+	if !h.enableDLQ || h.dlqPublisher == nil {
+		return
+	}
+
+	eventType := originalAttrs["event_type"]
+	failureReason := classifyFailureReason(failureErr)
+
+	// Create DLQ message with enriched attributes
+	dlqAttributes := make(map[string]string)
+	for k, v := range originalAttrs {
+		dlqAttributes[k] = v
+	}
+
+	// Add DLQ-specific attributes
+	dlqAttributes["dlq_reason"] = failureReason
+	dlqAttributes["dlq_retry_count"] = strconv.Itoa(retryCount)
+	dlqAttributes["dlq_original_timestamp"] = time.Now().UTC().Format(time.RFC3339)
+	dlqAttributes["dlq_error_message"] = errors.Format(failureErr)
+
+	// Wrap the original data with DLQ metadata
+	dlqMessage := map[string]interface{}{
+		"original_payload": data,
+		"dlq_metadata": map[string]interface{}{
+			"failure_reason":     failureReason,
+			"retry_count":        retryCount,
+			"error_message":      errors.Format(failureErr),
+			"timestamp":          time.Now().UTC(),
+			"original_event_type": eventType,
+		},
+	}
+
+	// Use a short timeout for DLQ publish to avoid blocking
+	dlqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	// Attempt to publish to DLQ (best effort)
+	_, err := h.dlqPublisher.Publish(dlqCtx, dlqMessage, dlqAttributes)
+	if err != nil {
+		// Log the DLQ failure but don't propagate - this is best effort
+		metrics.ErrorsTotal.WithLabelValues("dlq_publish_error").Inc()
+		return
+	}
+
+	// Record successful DLQ message
+	metrics.RecordDLQMessage(eventType, failureReason)
+}
+
+// classifyFailureReason returns a short description of why the message failed
+func classifyFailureReason(err error) string {
+	switch {
+	case errors.IsConnectionError(err):
+		return "connection_error"
+	case errors.IsRateLimitError(err):
+		return "rate_limit"
+	case errors.IsPublishError(err):
+		return "publish_error"
+	default:
+		return "unknown"
+	}
 }

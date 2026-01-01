@@ -40,6 +40,9 @@ var (
 	PubsubConnectionPoolSize   *prometheus.GaugeVec     // Connection pool size
 	PubsubBatchSize            prometheus.Histogram     // Size of batched messages
 
+	// Dead Letter Queue metrics
+	DLQMessagesTotal *prometheus.CounterVec // Messages sent to DLQ
+
 	// Mutex to protect metric initialization
 	initMutex sync.Mutex
 )
@@ -242,6 +245,15 @@ func InitMetrics(reg prometheus.Registerer) error {
 		},
 	)
 
+	// Dead Letter Queue metrics
+	DLQMessagesTotal = factory.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "buildkite_dlq_messages_total",
+			Help: "Total number of messages sent to the Dead Letter Queue",
+		},
+		[]string{"event_type", "failure_reason"},
+	)
+
 	return nil
 }
 
@@ -316,4 +328,9 @@ func DecrementConcurrentRequests(endpoint string) {
 // RecordPubsubBatchSize records the size of a Pub/Sub batch
 func RecordPubsubBatchSize(batchSize int) {
 	PubsubBatchSize.Observe(float64(batchSize))
+}
+
+// RecordDLQMessage records a message sent to the Dead Letter Queue
+func RecordDLQMessage(eventType, failureReason string) {
+	DLQMessagesTotal.WithLabelValues(eventType, failureReason).Inc()
 }

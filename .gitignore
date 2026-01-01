@@ -2,3 +2,4 @@ pubsub-simulation
 credentials.json
 .claude
 .env
+coverage.out

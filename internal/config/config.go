@@ -33,6 +33,9 @@ type GCPConfig struct {
 	TraceSamplingRatio     float64 `json:"trace_sampling_ratio" yaml:"trace_sampling_ratio"`
 	PubSubBatchSize        int     `json:"pubsub_batch_size" yaml:"pubsub_batch_size"`
 	PubSubRetryMaxAttempts int     `json:"pubsub_retry_max_attempts" yaml:"pubsub_retry_max_attempts"`
+	// Dead Letter Queue configuration
+	EnableDLQ  bool   `json:"enable_dlq" yaml:"enable_dlq"`
+	DLQTopicID string `json:"dlq_topic_id" yaml:"dlq_topic_id"`
 }
 
 // WebhookConfig holds Buildkite webhook related configuration
@@ -124,6 +127,10 @@ func (c *Config) Validate() error {
 	if c.GCP.TopicID == "" {
 		return errors.NewValidationError("GCP.TopicID cannot be empty")
 	}
+	// Validate DLQ configuration
+	if c.GCP.EnableDLQ && c.GCP.DLQTopicID == "" {
+		return errors.NewValidationError("GCP.DLQTopicID is required when DLQ is enabled")
+	}
 
 	// Check required Webhook fields - either Token or HMACSecret must be provided
 	if c.Webhook.Token == "" && c.Webhook.HMACSecret == "" {
@@ -192,6 +199,13 @@ func LoadFromEnv() (*Config, error) {
 		if attempts, err := strconv.Atoi(val); err == nil && attempts > 0 {
 			cfg.GCP.PubSubRetryMaxAttempts = attempts
 		}
+	}
+	// Dead Letter Queue configuration
+	if val := os.Getenv("ENABLE_DLQ"); val != "" {
+		cfg.GCP.EnableDLQ = strings.ToLower(val) == "true" || val == "1"
+	}
+	if val := os.Getenv("DLQ_TOPIC_ID"); val != "" {
+		cfg.GCP.DLQTopicID = val
 	}
 
 	// Load Webhook config
