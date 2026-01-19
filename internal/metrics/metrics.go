@@ -10,42 +10,22 @@ import (
 
 var (
 	// Webhook request metrics
-	WebhookRequestsTotal   *prometheus.CounterVec   // Total number of webhook requests
-	WebhookRequestDuration *prometheus.HistogramVec // Duration of webhook requests
-	RequestSizeBytes       *prometheus.HistogramVec // Size of incoming requests
-	ResponseSizeBytes      *prometheus.HistogramVec // Size of outgoing responses
-	AuthFailures           prometheus.Counter       // Authentication failures
-	RateLimitExceeded      *prometheus.CounterVec   // Rate limit exceeded events
-	RateLimitTotal         *prometheus.CounterVec   // Total rate limit hits by type and endpoint
-	ConcurrentRequests     *prometheus.GaugeVec     // Current number of concurrent requests
-	ErrorsTotal            *prometheus.CounterVec   // Total errors by type
-
-	// Message size metrics
-	MessageSizeBytes *prometheus.HistogramVec // Size of webhook payload messages
+	WebhookRequestsTotal   *prometheus.CounterVec
+	WebhookRequestDuration *prometheus.HistogramVec
+	AuthFailures           prometheus.Counter
+	RateLimitExceeded      *prometheus.CounterVec
+	ErrorsTotal            *prometheus.CounterVec
 
 	// Payload processing metrics
-	PayloadProcessingDuration *prometheus.HistogramVec // Processing time for payloads
-
-	// Build status metrics
-	BuildStatusTotal    *prometheus.CounterVec   // Build status counts
-	PipelineBuildsTotal *prometheus.CounterVec   // Total builds per pipeline
-	QueueTimeSeconds    *prometheus.HistogramVec // Build queue time
+	PayloadProcessingDuration *prometheus.HistogramVec
 
 	// Pub/Sub metrics
-	PubsubPublishRequestsTotal *prometheus.CounterVec   // Pub/Sub publish attempts
-	PubsubPublishDuration      prometheus.Histogram     // Pub/Sub publish latency
-	PubsubMessageSizeBytes     *prometheus.HistogramVec // Size of Pub/Sub messages
-	PubsubRetries              *prometheus.CounterVec   // Pub/Sub retries
-	PubsubBacklogSize          *prometheus.GaugeVec     // Current Pub/Sub backlog size
-	PubsubConnectionPoolSize   *prometheus.GaugeVec     // Connection pool size
-	PubsubBatchSize            prometheus.Histogram     // Size of batched messages
+	PubsubPublishRequestsTotal *prometheus.CounterVec
+	PubsubPublishDuration      prometheus.Histogram
+	PubsubRetries              *prometheus.CounterVec
 
 	// Dead Letter Queue metrics
-	DLQMessagesTotal *prometheus.CounterVec // Messages sent to DLQ
-
-	// Circuit Breaker metrics
-	CircuitBreakerState   *prometheus.GaugeVec   // Current circuit breaker state (0=closed, 1=open, 2=half-open)
-	CircuitBreakerTrips   *prometheus.CounterVec // Number of times circuit breaker tripped
+	DLQMessagesTotal *prometheus.CounterVec
 
 	// Mutex to protect metric initialization
 	initMutex sync.Mutex
@@ -62,7 +42,6 @@ func InitMetrics(reg prometheus.Registerer) error {
 
 	factory := promauto.With(reg)
 
-	// Webhook request metrics
 	WebhookRequestsTotal = factory.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "buildkite_webhook_requests_total",
@@ -80,28 +59,6 @@ func InitMetrics(reg prometheus.Registerer) error {
 		[]string{"event_type"},
 	)
 
-	RequestSizeBytes = factory.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "buildkite_request_size_bytes",
-			Help: "Size of incoming HTTP requests in bytes",
-			Buckets: []float64{
-				100, 500, 1000, 5000, 10000, 50000, 100000, 500000, 1000000,
-			},
-		},
-		[]string{"method", "path"},
-	)
-
-	ResponseSizeBytes = factory.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "buildkite_response_size_bytes",
-			Help: "Size of outgoing HTTP responses in bytes",
-			Buckets: []float64{
-				100, 500, 1000, 5000, 10000, 50000, 100000,
-			},
-		},
-		[]string{"method", "path", "status"},
-	)
-
 	AuthFailures = factory.NewCounter(
 		prometheus.CounterOpts{
 			Name: "buildkite_webhook_auth_failures_total",
@@ -117,22 +74,6 @@ func InitMetrics(reg prometheus.Registerer) error {
 		[]string{"type"},
 	)
 
-	RateLimitTotal = factory.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "buildkite_rate_limit_total",
-			Help: "Total rate limit hits by type and endpoint",
-		},
-		[]string{"limiter_type", "endpoint"},
-	)
-
-	ConcurrentRequests = factory.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "buildkite_concurrent_requests",
-			Help: "Current number of concurrent requests by endpoint",
-		},
-		[]string{"endpoint"},
-	)
-
 	ErrorsTotal = factory.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "buildkite_errors_total",
@@ -141,19 +82,6 @@ func InitMetrics(reg prometheus.Registerer) error {
 		[]string{"type"},
 	)
 
-	// Message size metrics
-	MessageSizeBytes = factory.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "buildkite_message_size_bytes",
-			Help: "Size of webhook payload messages in bytes",
-			Buckets: []float64{
-				100, 500, 1000, 5000, 10000, 50000, 100000,
-			},
-		},
-		[]string{"event_type"},
-	)
-
-	// Payload processing metrics
 	PayloadProcessingDuration = factory.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "buildkite_payload_processing_duration_seconds",
@@ -163,33 +91,6 @@ func InitMetrics(reg prometheus.Registerer) error {
 		[]string{"event_type"},
 	)
 
-	// Build status metrics
-	BuildStatusTotal = factory.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "buildkite_build_status_total",
-			Help: "Total number of builds by status",
-		},
-		[]string{"status", "pipeline"},
-	)
-
-	PipelineBuildsTotal = factory.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "buildkite_pipeline_builds_total",
-			Help: "Total number of builds per pipeline",
-		},
-		[]string{"pipeline", "organization"},
-	)
-
-	QueueTimeSeconds = factory.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "buildkite_queue_time_seconds",
-			Help:    "Time builds spend in queue before starting",
-			Buckets: prometheus.ExponentialBuckets(1, 2, 10),
-		},
-		[]string{"pipeline"},
-	)
-
-	// Pub/Sub metrics
 	PubsubPublishRequestsTotal = factory.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "buildkite_pubsub_publish_requests_total",
@@ -206,17 +107,6 @@ func InitMetrics(reg prometheus.Registerer) error {
 		},
 	)
 
-	PubsubMessageSizeBytes = factory.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "buildkite_pubsub_message_size_bytes",
-			Help: "Size of messages published to Pub/Sub in bytes",
-			Buckets: []float64{
-				100, 500, 1000, 5000, 10000, 50000, 100000,
-			},
-		},
-		[]string{"event_type"},
-	)
-
 	PubsubRetries = factory.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "buildkite_pubsub_retries_total",
@@ -225,31 +115,6 @@ func InitMetrics(reg prometheus.Registerer) error {
 		[]string{"event_type"},
 	)
 
-	PubsubBacklogSize = factory.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "buildkite_pubsub_backlog_size",
-			Help: "Current size of messages in the Pub/Sub publishing queue",
-		},
-		[]string{"topic"},
-	)
-
-	PubsubConnectionPoolSize = factory.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "buildkite_pubsub_connection_pool_size",
-			Help: "Size of the Pub/Sub connection pool",
-		},
-		[]string{"type"}, // "max" or "active"
-	)
-
-	PubsubBatchSize = factory.NewHistogram(
-		prometheus.HistogramOpts{
-			Name:    "buildkite_pubsub_batch_size",
-			Help:    "Number of messages in each Pub/Sub batch",
-			Buckets: []float64{1, 5, 10, 20, 50, 100, 200, 500},
-		},
-	)
-
-	// Dead Letter Queue metrics
 	DLQMessagesTotal = factory.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "buildkite_dlq_messages_total",
@@ -258,49 +123,17 @@ func InitMetrics(reg prometheus.Registerer) error {
 		[]string{"event_type", "failure_reason"},
 	)
 
-	// Circuit Breaker metrics
-	CircuitBreakerState = factory.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "buildkite_circuit_breaker_state",
-			Help: "Current circuit breaker state (0=closed, 1=open, 2=half-open)",
-		},
-		[]string{"name"},
-	)
-
-	CircuitBreakerTrips = factory.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "buildkite_circuit_breaker_trips_total",
-			Help: "Total number of times the circuit breaker has tripped (opened)",
-		},
-		[]string{"name"},
-	)
-
 	return nil
 }
 
-// RecordBuildStatus records build status metrics
-func RecordBuildStatus(status, pipeline string) {
-	BuildStatusTotal.WithLabelValues(status, pipeline).Inc()
-}
-
-// RecordPipelineBuild records pipeline build metrics
-func RecordPipelineBuild(pipeline, organization string) {
-	PipelineBuildsTotal.WithLabelValues(pipeline, organization).Inc()
-}
-
-// RecordQueueTime records build queue time metrics
-func RecordQueueTime(pipeline string, queueSeconds float64) {
-	QueueTimeSeconds.WithLabelValues(pipeline).Observe(queueSeconds)
-}
-
-// RecordMessageSize records the size of a message
+// RecordMessageSize records the size of a message (kept for handler.go compatibility)
 func RecordMessageSize(eventType string, sizeBytes int) {
-	MessageSizeBytes.WithLabelValues(eventType).Observe(float64(sizeBytes))
+	// No-op: metric removed but function kept for compatibility
 }
 
 // RecordPubsubMessageSize records the size of a published Pub/Sub message
 func RecordPubsubMessageSize(eventType string, sizeBytes int) {
-	PubsubMessageSizeBytes.WithLabelValues(eventType).Observe(float64(sizeBytes))
+	// No-op: metric removed but function kept for compatibility
 }
 
 // RecordPubsubRetry records a Pub/Sub publish retry attempt
@@ -308,61 +141,16 @@ func RecordPubsubRetry(eventType string) {
 	PubsubRetries.WithLabelValues(eventType).Inc()
 }
 
-// New helper functions for enhanced metrics
-
-// RecordRequestSize records the size of an incoming HTTP request
-func RecordRequestSize(method, path string, sizeBytes int) {
-	RequestSizeBytes.WithLabelValues(method, path).Observe(float64(sizeBytes))
-}
-
-// RecordResponseSize records the size of an outgoing HTTP response
-func RecordResponseSize(method, path string, statusCode int, sizeBytes int) {
-	ResponseSizeBytes.WithLabelValues(method, path, fmt.Sprintf("%d", statusCode)).Observe(float64(sizeBytes))
-}
-
-// RecordPubsubBacklogSize records the current Pub/Sub backlog size
-func RecordPubsubBacklogSize(topic string, size int) {
-	PubsubBacklogSize.WithLabelValues(topic).Set(float64(size))
-}
-
-// RecordPubsubConnectionPoolSize records the connection pool sizes
-func RecordPubsubConnectionPoolSize(max, active int) {
-	PubsubConnectionPoolSize.WithLabelValues("max").Set(float64(max))
-	PubsubConnectionPoolSize.WithLabelValues("active").Set(float64(active))
-}
-
-// RecordRateLimit records rate limit hits
-func RecordRateLimit(limiterType, endpoint string) {
-	RateLimitTotal.WithLabelValues(limiterType, endpoint).Inc()
-}
-
-// IncrementConcurrentRequests increments the concurrent requests gauge
-func IncrementConcurrentRequests(endpoint string) {
-	ConcurrentRequests.WithLabelValues(endpoint).Inc()
-}
-
-// DecrementConcurrentRequests decrements the concurrent requests gauge
-func DecrementConcurrentRequests(endpoint string) {
-	ConcurrentRequests.WithLabelValues(endpoint).Dec()
-}
-
-// RecordPubsubBatchSize records the size of a Pub/Sub batch
-func RecordPubsubBatchSize(batchSize int) {
-	PubsubBatchSize.Observe(float64(batchSize))
-}
-
 // RecordDLQMessage records a message sent to the Dead Letter Queue
 func RecordDLQMessage(eventType, failureReason string) {
 	DLQMessagesTotal.WithLabelValues(eventType, failureReason).Inc()
 }
 
-// RecordCircuitBreakerState records the current state of a circuit breaker
-// state: 0=closed, 1=open, 2=half-open
-func RecordCircuitBreakerState(name string, state int) {
-	CircuitBreakerState.WithLabelValues(name).Set(float64(state))
-}
+// RecordBuildStatus is a no-op (metric removed)
+func RecordBuildStatus(status, pipeline string) {}
 
-// RecordCircuitBreakerTrip records when a circuit breaker trips open
-func RecordCircuitBreakerTrip(name string) {
-	CircuitBreakerTrips.WithLabelValues(name).Inc()
-}
+// RecordPipelineBuild is a no-op (metric removed)
+func RecordPipelineBuild(pipeline, organization string) {}
+
+// RecordQueueTime is a no-op (metric removed)
+func RecordQueueTime(pipeline string, queueSeconds float64) {}

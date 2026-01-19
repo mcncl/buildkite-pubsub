@@ -2,7 +2,6 @@ package security
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -121,25 +120,12 @@ func (b *BaseRateLimiter) Allow(ctx context.Context, key string) bool {
 
 // AllowWithError returns nil if allowed, or an appropriate error if not allowed
 func (b *BaseRateLimiter) AllowWithError(ctx context.Context, key string) error {
-	// Handle context cancellation
 	if ctx.Err() != nil {
-		return errors.WithDetails(
-			errors.NewConnectionError("context cancelled"),
-			map[string]interface{}{
-				"context_error": ctx.Err().Error(),
-			},
-		)
+		return errors.NewConnectionError("context cancelled")
 	}
 
 	if !b.getLimiter(key).Allow() {
-		return errors.WithDetails(
-			errors.NewRateLimitError("rate limit exceeded"),
-			map[string]interface{}{
-				"key":         key,
-				"rate_limit":  b.requestsPerMinute,
-				"retry_after": 60, // Suggest retry after 60 seconds
-			},
-		)
+		return errors.NewRateLimitError("rate limit exceeded")
 	}
 
 	return nil
@@ -221,13 +207,8 @@ func WithRateLimiter(limiter RateLimiter) func(http.Handler) http.Handler {
 			if err := limiter.AllowWithError(r.Context(), key); err != nil {
 				metrics.RateLimitExceeded.WithLabelValues("http").Inc()
 
-				// Set retry-after header if it's a rate limit error
 				if errors.IsRateLimitError(err) {
-					if retryAfter, ok := errors.GetRetryOption(err); ok {
-						w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
-					} else {
-						w.Header().Set("Retry-After", "60") // Default to 60 seconds
-					}
+					w.Header().Set("Retry-After", "60")
 				}
 
 				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)

@@ -11,11 +11,11 @@ import (
 
 // FailingMockPublisher fails a specified number of times before succeeding
 type FailingMockPublisher struct {
-	mu             sync.Mutex
-	failuresLeft   int
-	publishCount   int
-	successCount   int
-	failureCount   int
+	mu           sync.Mutex
+	failuresLeft int
+	publishCount int
+	successCount int
+	failureCount int
 }
 
 func NewFailingMockPublisher(failCount int) *FailingMockPublisher {

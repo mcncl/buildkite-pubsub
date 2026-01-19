@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: buildkite-webhook
+  namespace: buildkite-webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: buildkite-webhook
+  template:
+    metadata:
+      labels:
+        app: buildkite-webhook
+    spec:
+      containers:
+        - name: webhook
+          image: buildkite-webhook:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          env:
+            - name: PROJECT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: buildkite-webhook-config
+                  key: project_id
+            - name: TOPIC_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: buildkite-webhook-config
+                  key: topic_id
+            - name: BUILDKITE_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: buildkite-webhook-secrets
+                  key: buildkite-token
+            # Use emulator for local testing
+            - name: PUBSUB_EMULATOR_HOST
+              value: "host.docker.internal:8085"

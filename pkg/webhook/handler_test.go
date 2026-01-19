@@ -84,12 +84,7 @@ func TestHandler(t *testing.T) {
 			wantMetrics: map[string]bool{
 				"buildkite_webhook_requests_total":              true,
 				"buildkite_webhook_request_duration_seconds":    true,
-				"buildkite_message_size_bytes":                  true,
 				"buildkite_payload_processing_duration_seconds": true,
-				"buildkite_build_status_total":                  true,
-				"buildkite_pipeline_builds_total":               true,
-				"buildkite_queue_time_seconds":                  true,
-				"buildkite_pubsub_message_size_bytes":           true,
 				"buildkite_pubsub_publish_duration_seconds":     true,
 				"buildkite_pubsub_publish_requests_total":       true,
 			},
@@ -135,7 +130,6 @@ func TestHandler(t *testing.T) {
 			wantMetrics: map[string]bool{
 				"buildkite_webhook_requests_total": true,
 				"buildkite_errors_total":           true,
-				"buildkite_message_size_bytes":     true,
 			},
 		},
 		{
@@ -150,7 +144,6 @@ func TestHandler(t *testing.T) {
 			wantErrorType: "",
 			wantMetrics: map[string]bool{
 				"buildkite_webhook_requests_total":              true,
-				"buildkite_message_size_bytes":                  true,
 				"buildkite_payload_processing_duration_seconds": true,
 			},
 		},
@@ -183,7 +176,6 @@ func TestHandler(t *testing.T) {
 			wantErrorType: "connection",
 			wantMetrics: map[string]bool{
 				"buildkite_webhook_requests_total":              true,
-				"buildkite_message_size_bytes":                  true,
 				"buildkite_payload_processing_duration_seconds": true,
 				"buildkite_errors_total":                        true,
 				"buildkite_pubsub_publish_requests_total":       true,
@@ -218,7 +210,6 @@ func TestHandler(t *testing.T) {
 			wantErrorType: "publish",
 			wantMetrics: map[string]bool{
 				"buildkite_webhook_requests_total":              true,
-				"buildkite_message_size_bytes":                  true,
 				"buildkite_payload_processing_duration_seconds": true,
 				"buildkite_errors_total":                        true,
 				"buildkite_pubsub_publish_requests_total":       true,
@@ -253,7 +244,6 @@ func TestHandler(t *testing.T) {
 			wantErrorType: "rate_limit",
 			wantMetrics: map[string]bool{
 				"buildkite_webhook_requests_total":              true,
-				"buildkite_message_size_bytes":                  true,
 				"buildkite_payload_processing_duration_seconds": true,
 				"buildkite_errors_total":                        true,
 				"buildkite_pubsub_publish_requests_total":       true,

@@ -40,12 +40,9 @@ type GCPConfig struct {
 
 // WebhookConfig holds Buildkite webhook related configuration
 type WebhookConfig struct {
-	Token                      string        `json:"token" yaml:"token"`
-	HMACSecret                 string        `json:"hmac_secret" yaml:"hmac_secret"`
-	Path                       string        `json:"path" yaml:"path"`
-	EnableIPAllowlist          bool          `json:"enable_ip_allowlist" yaml:"enable_ip_allowlist"`
-	IPAllowlistRefreshToken    string        `json:"ip_allowlist_refresh_token" yaml:"ip_allowlist_refresh_token"`
-	IPAllowlistRefreshInterval time.Duration `json:"ip_allowlist_refresh_interval" yaml:"ip_allowlist_refresh_interval"`
+	Token      string `json:"token" yaml:"token"`
+	HMACSecret string `json:"hmac_secret" yaml:"hmac_secret"`
+	Path       string `json:"path" yaml:"path"`
 }
 
 // ServerConfig holds HTTP server related configuration
@@ -83,9 +80,7 @@ func DefaultConfig() *Config {
 			PubSubRetryMaxAttempts: 5,
 		},
 		Webhook: WebhookConfig{
-			Path:                       "/webhook",
-			EnableIPAllowlist:          false,
-			IPAllowlistRefreshInterval: 1 * time.Hour,
+			Path: "/webhook",
 		},
 		Server: ServerConfig{
 			Port:           8888,
@@ -218,17 +213,6 @@ func LoadFromEnv() (*Config, error) {
 	if val := os.Getenv("WEBHOOK_PATH"); val != "" {
 		cfg.Webhook.Path = val
 	}
-	if val := os.Getenv("ENABLE_IP_ALLOWLIST"); val != "" {
-		cfg.Webhook.EnableIPAllowlist = strings.ToLower(val) == "true"
-	}
-	if val := os.Getenv("IP_ALLOWLIST_REFRESH_TOKEN"); val != "" {
-		cfg.Webhook.IPAllowlistRefreshToken = val
-	}
-	if val := os.Getenv("IP_ALLOWLIST_REFRESH_INTERVAL"); val != "" {
-		if interval, err := strconv.Atoi(val); err == nil && interval > 0 {
-			cfg.Webhook.IPAllowlistRefreshInterval = time.Duration(interval) * time.Minute
-		}
-	}
 
 	// Load Server config
 	if val := os.Getenv("PORT"); val != "" {
@@ -320,12 +304,9 @@ func LoadFromFile(path string) (*Config, error) {
 			PubSubRetryMaxAttempts int     `json:"pubsub_retry_max_attempts" yaml:"pubsub_retry_max_attempts"`
 		} `json:"gcp" yaml:"gcp"`
 		Webhook struct {
-			Token                      string `json:"token" yaml:"token"`
-			HMACSecret                 string `json:"hmac_secret" yaml:"hmac_secret"`
-			Path                       string `json:"path" yaml:"path"`
-			EnableIPAllowlist          bool   `json:"enable_ip_allowlist" yaml:"enable_ip_allowlist"`
-			IPAllowlistRefreshToken    string `json:"ip_allowlist_refresh_token" yaml:"ip_allowlist_refresh_token"`
-			IPAllowlistRefreshInterval string `json:"ip_allowlist_refresh_interval" yaml:"ip_allowlist_refresh_interval"`
+			Token      string `json:"token" yaml:"token"`
+			HMACSecret string `json:"hmac_secret" yaml:"hmac_secret"`
+			Path       string `json:"path" yaml:"path"`
 		} `json:"webhook" yaml:"webhook"`
 		Server struct {
 			Port           int    `json:"port" yaml:"port"`
@@ -387,17 +368,6 @@ func LoadFromFile(path string) (*Config, error) {
 	cfg.Webhook.Token = tempCfg.Webhook.Token
 	cfg.Webhook.HMACSecret = tempCfg.Webhook.HMACSecret
 	cfg.Webhook.Path = tempCfg.Webhook.Path
-	cfg.Webhook.EnableIPAllowlist = tempCfg.Webhook.EnableIPAllowlist
-	cfg.Webhook.IPAllowlistRefreshToken = tempCfg.Webhook.IPAllowlistRefreshToken
-
-	// Parse duration values
-	if tempCfg.Webhook.IPAllowlistRefreshInterval != "" {
-		if mins, err := strconv.Atoi(tempCfg.Webhook.IPAllowlistRefreshInterval); err == nil {
-			cfg.Webhook.IPAllowlistRefreshInterval = time.Duration(mins) * time.Minute
-		} else if d, err := time.ParseDuration(tempCfg.Webhook.IPAllowlistRefreshInterval); err == nil {
-			cfg.Webhook.IPAllowlistRefreshInterval = d
-		}
-	}
 
 	cfg.Server.Port = tempCfg.Server.Port
 	cfg.Server.LogLevel = tempCfg.Server.LogLevel
@@ -490,15 +460,6 @@ func MergeConfigs(base, override *Config) *Config {
 	}
 	if override.Webhook.Path != "" {
 		result.Webhook.Path = override.Webhook.Path
-	}
-	if override.Webhook.EnableIPAllowlist {
-		result.Webhook.EnableIPAllowlist = true
-	}
-	if override.Webhook.IPAllowlistRefreshToken != "" {
-		result.Webhook.IPAllowlistRefreshToken = override.Webhook.IPAllowlistRefreshToken
-	}
-	if override.Webhook.IPAllowlistRefreshInterval != 0 {
-		result.Webhook.IPAllowlistRefreshInterval = override.Webhook.IPAllowlistRefreshInterval
 	}
 
 	// Server config
@@ -603,9 +564,6 @@ func (c *Config) String() string {
 	}
 	if copy.Webhook.HMACSecret != "" {
 		copy.Webhook.HMACSecret = "********"
-	}
-	if copy.Webhook.IPAllowlistRefreshToken != "" {
-		copy.Webhook.IPAllowlistRefreshToken = "********"
 	}
 
 	// Convert to JSON

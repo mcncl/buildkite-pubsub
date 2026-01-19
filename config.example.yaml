@@ -46,15 +46,6 @@ webhook:
   # Optional: Path to handle webhook requests (default: "/webhook")
   path: "/webhook"
 
-  # Optional: Whether to use Buildkite IP allowlist (default: false)
-  enable_ip_allowlist: false
-
-  # Optional: Token for refreshing the Buildkite IP allowlist (default: "")
-  ip_allowlist_refresh_token: ""
-
-  # Optional: How often to refresh the IP allowlist in minutes (default: 60)
-  ip_allowlist_refresh_interval: 60
-
 # HTTP server configuration
 server:
   # Optional: HTTP server port (default: 8080)

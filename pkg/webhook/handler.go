@@ -119,13 +119,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Parse payload
 	var payload buildkite.Payload
 	if err := json.Unmarshal(body, &payload); err != nil {
-		err = errors.NewValidationError("failed to decode payload")
-		err = errors.WithDetails(err, map[string]interface{}{
-			"error":       err.Error(),
-			"body_length": len(body),
-		})
 		metrics.ErrorsTotal.WithLabelValues("json_decode_error").Inc()
-		h.handleError(w, r, err, eventType)
+		h.handleError(w, r, errors.NewValidationError("failed to decode payload"), eventType)
 		return
 	}
 
@@ -221,14 +216,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			metrics.PubsubPublishRequestsTotal.WithLabelValues("error", eventType).Inc()
 		}
 
-		// Add context information to the error
-		publishErr = errors.WithDetails(publishErr, map[string]interface{}{
-			"event_type":   eventType,
-			"payload_size": len(transformedJSON),
-			"build_id":     transformed.Build.ID,
-			"pipeline":     transformed.Build.Pipeline,
-		})
-
 		metrics.ErrorsTotal.WithLabelValues("publish_error").Inc()
 		h.handleError(w, r, publishErr, eventType)
 		return
@@ -257,9 +244,6 @@ func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error,
 
 	var errorType string
 
-	// Extract error details if available
-	details := errors.GetDetails(err)
-
 	// Create error response based on error type
 	response := ErrorResponse{
 		Status:  "error",
@@ -276,7 +260,6 @@ func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error,
 	case errors.IsValidationError(err):
 		errorType = "validation"
 		response.ErrorType = errorType
-		response.Details = details
 		h.sendJSONResponse(w, http.StatusBadRequest, response)
 
 	case errors.IsRateLimitError(err):
@@ -294,7 +277,6 @@ func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error,
 	case errors.IsPublishError(err):
 		errorType = "publish"
 		response.ErrorType = errorType
-		response.Details = details
 		h.sendJSONResponse(w, http.StatusInternalServerError, response)
 
 	default:
@@ -311,15 +293,6 @@ func (h *Handler) getStatusCodeForError(err error) string {
 	case errors.IsAuthError(err):
 		return "401"
 	case errors.IsValidationError(err):
-		// Check for method not allowed
-		details := errors.GetDetails(err)
-		if details != nil {
-			if method, ok := details["method"]; ok {
-				if method != "POST" {
-					return "405"
-				}
-			}
-		}
 		return "400"
 	case errors.IsRateLimitError(err):
 		return "429"
@@ -449,10 +422,10 @@ func (h *Handler) sendToDLQ(ctx context.Context, data interface{}, originalAttrs
 	dlqMessage := map[string]interface{}{
 		"original_payload": data,
 		"dlq_metadata": map[string]interface{}{
-			"failure_reason":     failureReason,
-			"retry_count":        retryCount,
-			"error_message":      errors.Format(failureErr),
-			"timestamp":          time.Now().UTC(),
+			"failure_reason":      failureReason,
+			"retry_count":         retryCount,
+			"error_message":       errors.Format(failureErr),
+			"timestamp":           time.Now().UTC(),
 			"original_event_type": eventType,
 		},
 	}

@@ -60,13 +60,13 @@ type CircuitBreaker struct {
 	publisher Publisher
 	config    CircuitBreakerConfig
 
-	mu                  sync.RWMutex
-	state               CircuitState
-	consecutiveFailures int
+	mu                   sync.RWMutex
+	state                CircuitState
+	consecutiveFailures  int
 	consecutiveSuccesses int
-	halfOpenRequests    int
-	lastFailureTime     time.Time
-	lastStateChange     time.Time
+	halfOpenRequests     int
+	lastFailureTime      time.Time
+	lastStateChange      time.Time
 
 	// Callbacks for state changes (optional, for metrics/logging)
 	onStateChange func(from, to CircuitState)
@@ -102,11 +102,11 @@ func (cb *CircuitBreaker) Stats() map[string]interface{} {
 	defer cb.mu.RUnlock()
 
 	return map[string]interface{}{
-		"state":                cb.state.String(),
-		"consecutive_failures": cb.consecutiveFailures,
+		"state":                 cb.state.String(),
+		"consecutive_failures":  cb.consecutiveFailures,
 		"consecutive_successes": cb.consecutiveSuccesses,
-		"last_failure_time":    cb.lastFailureTime,
-		"last_state_change":    cb.lastStateChange,
+		"last_failure_time":     cb.lastFailureTime,
+		"last_state_change":     cb.lastStateChange,
 	}
 }
 

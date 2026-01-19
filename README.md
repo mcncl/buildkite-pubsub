@@ -18,7 +18,7 @@ This service connects Buildkite's webhook system to Google Cloud Pub/Sub, allowi
 
 ## Prerequisites
 
-- [Go 1.20+](https://golang.org/dl/) for development
+- [Go 1.21+](https://golang.org/dl/) for development
 - [Docker](https://docs.docker.com/get-docker/) for container builds
 - [kubectl](https://kubernetes.io/docs/tasks/tools/) for deployment
 - [Orbstack](https://orbstack.dev/) for local Kubernetes
