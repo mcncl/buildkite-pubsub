@@ -26,22 +26,6 @@ This service connects Buildkite's webhook system to Google Cloud Pub/Sub, allowi
 - [Google Cloud Project](https://cloud.google.com/) with Pub/Sub enabled
 - Buildkite organization admin access for webhook configuration
 
-## Documentation
-
-### Getting Started
-
-- [Quick Start Guide](docs/QUICK_START.md) - Get up and running in minutes
-- [Google Cloud Setup](docs/GCP_SETUP.md) - Configure GCP project and permissions
-- [Testing Guide](docs/TESTING.md) - Local development through production testing
-
-### Operations
-
-- [Usage Guide](docs/USAGE.md) - Event patterns and integration examples
-- [Monitoring](docs/MONITORING.md) - Metrics, dashboards, and alerts
-- [Kubernetes Deployment](docs/K8S_DEPLOYMENT.md) - Production deployment configuration
-
-See [docs/](docs/) for complete documentation including architecture, distributed tracing, event schemas, and more.
-
 ## Local Development
 
 ```bash
@@ -55,18 +39,9 @@ go test ./...
 docker build -t buildkite-webhook .
 ```
 
-## Deployment
-
-Follow the [Quick Start Guide](docs/QUICK_START.md) for complete deployment instructions, or see individual guides:
-
-- [GCP Setup Guide](docs/GCP_SETUP.md) for Google Cloud configuration
-- [Usage Guide](docs/USAGE.md) for event handling patterns
-
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-For security vulnerabilities, please see [SECURITY.md](SECURITY.md).
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
