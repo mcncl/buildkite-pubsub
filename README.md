@@ -28,19 +28,12 @@ This service connects Buildkite's webhook system to Google Cloud Pub/Sub, allowi
 
 ## Documentation
 
-### Getting Started
-
-- [Quick Start Guide](docs/QUICK_START.md) - Get up and running in minutes
-- [Google Cloud Setup](docs/GCP_SETUP.md) - Configure GCP project and permissions
-- [Testing Guide](docs/TESTING.md) - Local development through production testing
-
-### Operations
-
-- [Usage Guide](docs/USAGE.md) - Event patterns and integration examples
-- [Monitoring](docs/MONITORING.md) - Metrics, dashboards, and alerts
-- [Kubernetes Deployment](docs/K8S_DEPLOYMENT.md) - Production deployment configuration
-
-See [docs/](docs/) for complete documentation including architecture, distributed tracing, event schemas, and more.
+- [Quick Start](docs/QUICK_START.md) - Get running locally in minutes
+- [GCP Setup](docs/GCP_SETUP.md) - Configure Google Cloud project
+- [Kubernetes Deployment](docs/K8S_DEPLOYMENT.md) - Deploy to Kubernetes
+- [Events](docs/EVENTS.md) - Event types and Pub/Sub filtering
+- [Monitoring](docs/MONITORING.md) - Metrics and dashboards
+- [Distributed Tracing](docs/DISTRIBUTED_TRACING.md) - OpenTelemetry setup
 
 ## Local Development
 
@@ -57,10 +50,7 @@ docker build -t buildkite-webhook .
 
 ## Deployment
 
-Follow the [Quick Start Guide](docs/QUICK_START.md) for complete deployment instructions, or see individual guides:
-
-- [GCP Setup Guide](docs/GCP_SETUP.md) for Google Cloud configuration
-- [Usage Guide](docs/USAGE.md) for event handling patterns
+See [GCP Setup](docs/GCP_SETUP.md) for Google Cloud configuration or [Kubernetes Deployment](docs/K8S_DEPLOYMENT.md) for cluster deployment.
 
 ## Contributing
 
