@@ -1,6 +1,7 @@
 services:
   # Production app
   app:
+    profiles: [prod]
     build:
       context: .
       target: production
@@ -13,7 +14,7 @@ services:
       - BUILDKITE_WEBHOOK_TOKEN
       - GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials.json
     volumes:
-      - ${GOOGLE_APPLICATION_CREDENTIALS:-}:/tmp/credentials.json:ro
+      - ${GOOGLE_APPLICATION_CREDENTIALS}:/tmp/credentials.json:ro
 
   # Development base service
   dev:
