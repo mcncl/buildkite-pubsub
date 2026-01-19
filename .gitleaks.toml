@@ -1,0 +1,21 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allow placeholder/example tokens in documentation and tests"
+regexTarget = "line"
+regexes = [
+    '''REDACTED''',
+    '''test-token[-\w]*''',
+    '''your[-\w]*token''',
+    '''YOUR_WEBHOOK_TOKEN''',
+    '''\$BUILDKITE_WEBHOOK_TOKEN''',
+    '''\$WEBHOOK_TOKEN''',
+    '''\$TOKEN''',
+]
+
+paths = [
+    '''docs/.*\.md$''',
+    '''.*_test\.go$''',
+    '''config\.example\.(yaml|json)$''',
+]

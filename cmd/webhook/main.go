@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -38,12 +39,12 @@ func main() {
 	// Load configuration
 	cfg, err := config.Load(*configFile, nil)
 	if err != nil {
-		logger.WithError(err).Error("Failed to load configuration")
+		logger.Error("Failed to load configuration", "error", err)
 		os.Exit(1)
 	}
 
 	// Log the configuration (with sensitive values masked)
-	logger.WithField("config", cfg.String()).Info("Configuration loaded")
+	logger.Info("Configuration loaded", "config", cfg.String())
 
 	ctx := context.Background()
 
@@ -74,15 +75,15 @@ func main() {
 
 		telemetryProvider, err = telemetry.NewProvider(telemetryConfig)
 		if err != nil {
-			logger.WithError(err).Warn("Failed to create telemetry provider, continuing without tracing")
+			logger.Warn("Failed to create telemetry provider, continuing without tracing", "error", err)
 		} else {
 			// Try to start telemetry with timeout
 			startCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			if err := telemetryProvider.Start(startCtx); err != nil {
-				logger.WithError(err).Warn("Failed to start telemetry, continuing without tracing")
+				logger.Warn("Failed to start telemetry, continuing without tracing", "error", err)
 				telemetryProvider = nil
 			} else {
-				logger.WithField("endpoint", telemetryConfig.OTLPEndpoint).Info("Distributed tracing enabled")
+				logger.Info("Distributed tracing enabled", "endpoint", telemetryConfig.OTLPEndpoint)
 			}
 			cancel()
 		}
@@ -91,7 +92,7 @@ func main() {
 	// Add metrics initialization
 	reg := prometheus.NewRegistry()
 	if err := metrics.InitMetrics(reg); err != nil {
-		logger.WithError(err).Error("Failed to initialize metrics")
+		logger.Error("Failed to initialize metrics", "error", err)
 		os.Exit(1)
 	}
 
@@ -119,17 +120,12 @@ func main() {
 			err = errors.Wrap(err, "failed to create publisher")
 		}
 
-		err = errors.WithDetails(err, map[string]interface{}{
-			"project_id": cfg.GCP.ProjectID,
-			"topic_id":   cfg.GCP.TopicID,
-		})
-
-		logger.WithError(err).Error("Publisher initialization error")
+		logger.Error("Publisher initialization error", "error", err, "project_id", cfg.GCP.ProjectID, "topic_id", cfg.GCP.TopicID)
 		os.Exit(1)
 	}
 	defer func() {
 		if err := pub.Close(); err != nil {
-			logger.WithError(err).Error("Failed to close publisher")
+			logger.Error("Failed to close publisher", "error", err)
 		}
 	}()
 
@@ -194,9 +190,9 @@ func main() {
 
 	// Start server in goroutine
 	go func() {
-		logger.WithField("port", cfg.Server.Port).Info("Server starting")
+		logger.Info("Server starting", "port", cfg.Server.Port)
 		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-			logger.WithError(err).Error("HTTP server error")
+			logger.Error("HTTP server error", "error", err)
 			os.Exit(1)
 		}
 	}()
@@ -208,7 +204,7 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-sigChan
-	logger.WithField("signal", sig.String()).Info("Shutting down server")
+	logger.Info("Shutting down server", "signal", sig.String())
 
 	// Graceful shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.RequestTimeout)
@@ -216,13 +212,13 @@ func main() {
 
 	healthCheck.SetReady(false)
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.WithError(err).Error("HTTP server shutdown error")
+		logger.Error("HTTP server shutdown error", "error", err)
 	}
 
 	// Shutdown telemetry
 	if telemetryProvider != nil {
 		if err := telemetryProvider.Shutdown(shutdownCtx); err != nil {
-			logger.WithError(err).Error("Telemetry shutdown error")
+			logger.Error("Telemetry shutdown error", "error", err)
 		}
 	}
 
@@ -230,49 +226,8 @@ func main() {
 }
 
 // initLogger creates and configures the structured logger
-func initLogger(level, format string) logging.Logger {
-	// Parse log level
-	var logLevel logging.Level
-	switch level {
-	case "debug":
-		logLevel = logging.LevelDebug
-	case "info":
-		logLevel = logging.LevelInfo
-	case "warn":
-		logLevel = logging.LevelWarn
-	case "error":
-		logLevel = logging.LevelError
-	default:
-		logLevel = logging.LevelInfo
-	}
-
-	// Parse log format
-	var logFormat logging.Format
-	switch format {
-	case "json":
-		logFormat = logging.FormatJSON
-	case "text":
-		logFormat = logging.FormatText
-	case "dev":
-		logFormat = logging.FormatDevelopment
-	default:
-		logFormat = logging.FormatJSON
-	}
-
-	// Get hostname
-	hostname, err := os.Hostname()
-	if err != nil {
-		hostname = "unknown"
-	}
-
-	// Create and return logger
-	return logging.NewLogger(logging.Config{
-		Output:   os.Stderr,
-		Level:    logLevel,
-		Format:   logFormat,
-		AppName:  "buildkite-webhook",
-		Hostname: hostname,
-	})
+func initLogger(level, format string) *slog.Logger {
+	return logging.NewLogger(level, format)
 }
 
 func getPort() string {

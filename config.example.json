@@ -12,10 +12,7 @@
   "webhook": {
     "token": "your-webhook-token",
     "_comment": "Use 'hmac_secret' instead of 'token' for HMAC-SHA256 signature verification (more secure). When both are provided, HMAC signature takes precedence.",
-    "path": "/webhook",
-    "enable_ip_allowlist": false,
-    "ip_allowlist_refresh_token": "",
-    "ip_allowlist_refresh_interval": 60
+    "path": "/webhook"
   },
   "server": {
     "port": 8080,

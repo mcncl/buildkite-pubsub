@@ -56,17 +56,32 @@ gcloud services enable \
     containerregistry.googleapis.com
 ```
 
-## 4. Create Pub/Sub Topic
+## 4. Create Pub/Sub Topics
 
 ```bash
 # Set topic name
 export TOPIC_ID="buildkite-events"
 
-# Create the topic
+# Create the main topic
 gcloud pubsub topics create $TOPIC_ID
 
 # Verify creation
 gcloud pubsub topics list | grep $TOPIC_ID
+```
+
+### Optional: Create Dead Letter Queue Topic
+
+If you want to capture failed messages for later analysis:
+
+```bash
+# Create DLQ topic
+export DLQ_TOPIC_ID="buildkite-events-dlq"
+gcloud pubsub topics create $DLQ_TOPIC_ID
+
+# Create a subscription to review failed messages
+gcloud pubsub subscriptions create buildkite-dlq-sub \
+    --topic=$DLQ_TOPIC_ID \
+    --ack-deadline=60
 ```
 
 ## 5. Create Service Account
@@ -181,6 +196,10 @@ gcloud run deploy buildkite-webhook \
   --service-account=${SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com \
   --set-env-vars="PROJECT_ID=$PROJECT_ID,TOPIC_ID=$TOPIC_ID,ENABLE_TRACING=true" \
   --set-secrets="BUILDKITE_WEBHOOK_TOKEN=buildkite-webhook-token:latest"
+
+# Optional: Enable Dead Letter Queue
+# Add these environment variables to capture failed messages:
+# --update-env-vars="ENABLE_DLQ=true,DLQ_TOPIC_ID=buildkite-events-dlq"
 
 # Get the service URL
 gcloud run services describe buildkite-webhook --region $REGION --format 'value(status.url)'

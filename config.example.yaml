@@ -27,6 +27,12 @@ gcp:
   # Optional: Maximum number of retry attempts for Pub/Sub publishing (default: 5)
   pubsub_retry_max_attempts: 5
 
+  # Optional: Enable Dead Letter Queue for failed messages (default: false)
+  enable_dlq: false
+
+  # Optional: Pub/Sub topic ID for Dead Letter Queue (required if enable_dlq is true)
+  dlq_topic_id: "buildkite-events-dlq"
+
 # Buildkite webhook configuration
 webhook:
   # Required: Either token OR hmac_secret must be provided
@@ -39,15 +45,6 @@ webhook:
 
   # Optional: Path to handle webhook requests (default: "/webhook")
   path: "/webhook"
-
-  # Optional: Whether to use Buildkite IP allowlist (default: false)
-  enable_ip_allowlist: false
-
-  # Optional: Token for refreshing the Buildkite IP allowlist (default: "")
-  ip_allowlist_refresh_token: ""
-
-  # Optional: How often to refresh the IP allowlist in minutes (default: 60)
-  ip_allowlist_refresh_interval: 60
 
 # HTTP server configuration
 server:

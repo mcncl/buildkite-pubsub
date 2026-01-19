@@ -4,7 +4,7 @@ metadata:
   name: buildkite-webhook
   namespace: buildkite-webhook
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: buildkite-webhook
@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: webhook
-          image: localhost:5000/buildkite-webhook:latest
-          imagePullPolicy: Always
+          image: buildkite-webhook:local
+          imagePullPolicy: Never
           ports:
             - containerPort: 8080
           livenessProbe:
@@ -54,21 +54,6 @@ spec:
                 secretKeyRef:
                   name: buildkite-webhook-secrets
                   key: buildkite-token
-            - name: GOOGLE_APPLICATION_CREDENTIALS
-              value: /var/secrets/google/credentials.json
-            # Optional: Dead Letter Queue configuration
-            # Uncomment to enable DLQ for failed messages
-            # - name: ENABLE_DLQ
-            #   value: "true"
-            # - name: DLQ_TOPIC_ID
-            #   valueFrom:
-            #     configMapKeyRef:
-            #       name: buildkite-webhook-config
-            #       key: dlq_topic_id
-          volumeMounts:
-            - name: google-cloud-key
-              mountPath: /var/secrets/google
-      volumes:
-        - name: google-cloud-key
-          secret:
-            secretName: gcp-credentials
+            # Use emulator for local testing
+            - name: PUBSUB_EMULATOR_HOST
+              value: "host.docker.internal:8085"

@@ -5,3 +5,5 @@ metadata:
 data:
   project_id: "your-project-id"
   topic_id: "buildkite-events"
+  # Optional: Dead Letter Queue topic for failed messages
+  # dlq_topic_id: "buildkite-events-dlq"
