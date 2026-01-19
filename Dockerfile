@@ -1,7 +1,7 @@
 # Development stage - includes linting and testing tools
-FROM golang:1.24-alpine AS dev
+FROM golang:1.25-alpine AS dev
 
-RUN apk add --no-cache git
+RUN apk add --no-cache git gcc musl-dev
 
 RUN go install mvdan.cc/gofumpt@latest && \
     go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest && \
@@ -18,7 +18,7 @@ COPY . .
 CMD ["go", "test", "-v", "./..."]
 
 # Build stage
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
