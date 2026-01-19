@@ -1,8 +1,26 @@
 services:
-  dev:
+  # Production app
+  app:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      target: production
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - PROJECT_ID
+      - TOPIC_ID
+      - BUILDKITE_WEBHOOK_TOKEN
+      - GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials.json
+    volumes:
+      - ${GOOGLE_APPLICATION_CREDENTIALS:-}:/tmp/credentials.json:ro
+
+  # Development base service
+  dev:
+    profiles: [dev, ci]
+    build:
+      context: .
+      target: dev
     volumes:
       - .:/app
       - go-cache:/go
@@ -11,41 +29,38 @@ services:
       - GOCACHE=/go/cache
       - GOMODCACHE=/go/mod
 
+  # CI services
   test:
-    extends: 
+    profiles: [ci]
+    extends:
       service: dev
     command: go test -v -race -coverprofile=/app/coverage.txt -covermode=atomic ./...
     environment:
       - CGO_ENABLED=1
 
   lint:
+    profiles: [ci]
     extends:
       service: dev
     command: golangci-lint run --timeout=5m
 
   fmt:
+    profiles: [ci]
     extends:
       service: dev
     command: gofumpt -l .
 
-  # Security scanning
   gosec:
+    profiles: [ci]
     extends:
       service: dev
     command: gosec -fmt json -out /app/gosec-report.json -stdout -verbose=text ./...
 
   govulncheck:
+    profiles: [ci]
     extends:
       service: dev
     command: govulncheck ./...
-
-  goreleaser:
-    profiles:
-      - release
-    image: goreleaser/goreleaser:latest@sha256:846b7cad015f87712ad4e68d9cd59bfde4e59c9970265f76dd4e3b3b6f41c768
-    volumes:
-      - .:/app
-    working_dir: /app
 
 volumes:
   go-cache:

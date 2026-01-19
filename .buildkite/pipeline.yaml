@@ -4,27 +4,27 @@ steps:
     plugins:
       - docker-compose#v5.12.1:
           run: lint
-          config: compose.ci.yml
+          config: compose.yaml
       - docker-compose#v5.12.1:
           run: fmt
-          config: compose.ci.yml
+          config: compose.yaml
 
   - label: "🧪 Test"
     key: "test"
     plugins:
       - docker-compose#v5.12.1:
           run: test
-          config: compose.ci.yml
+          config: compose.yaml
 
   - label: "🔒 Security Scan"
     key: "security"
     plugins:
       - docker-compose#v5.12.1:
           run: gosec
-          config: compose.ci.yml
+          config: compose.yaml
       - docker-compose#v5.12.1:
           run: govulncheck
-          config: compose.ci.yml
+          config: compose.yaml
     artifact_paths:
       - "gosec-report.json"
     soft_fail:
