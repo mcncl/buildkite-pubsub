@@ -22,7 +22,6 @@ var (
 	// Pub/Sub metrics
 	PubsubPublishRequestsTotal *prometheus.CounterVec
 	PubsubPublishDuration      prometheus.Histogram
-	PubsubRetries              *prometheus.CounterVec
 
 	// Dead Letter Queue metrics
 	DLQMessagesTotal *prometheus.CounterVec
@@ -107,14 +106,6 @@ func InitMetrics(reg prometheus.Registerer) error {
 		},
 	)
 
-	PubsubRetries = factory.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "buildkite_pubsub_retries_total",
-			Help: "Number of Pub/Sub publish retries",
-		},
-		[]string{"event_type"},
-	)
-
 	DLQMessagesTotal = factory.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "buildkite_dlq_messages_total",
@@ -134,11 +125,6 @@ func RecordMessageSize(eventType string, sizeBytes int) {
 // RecordPubsubMessageSize records the size of a published Pub/Sub message
 func RecordPubsubMessageSize(eventType string, sizeBytes int) {
 	// No-op: metric removed but function kept for compatibility
-}
-
-// RecordPubsubRetry records a Pub/Sub publish retry attempt
-func RecordPubsubRetry(eventType string) {
-	PubsubRetries.WithLabelValues(eventType).Inc()
 }
 
 // RecordDLQMessage records a message sent to the Dead Letter Queue

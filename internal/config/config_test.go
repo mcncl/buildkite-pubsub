@@ -19,7 +19,6 @@ func TestLoadFromEnv(t *testing.T) {
 		"MAX_REQUEST_SIZE",
 		"REQUEST_TIMEOUT",
 		"RATE_LIMIT",
-		"IP_RATE_LIMIT",
 	} {
 		if val, exists := os.LookupEnv(key); exists {
 			envBackup[key] = val
@@ -49,7 +48,6 @@ func TestLoadFromEnv(t *testing.T) {
 	_ = os.Setenv("MAX_REQUEST_SIZE", "5242880") // 5 MB
 	_ = os.Setenv("REQUEST_TIMEOUT", "45")       // 45 seconds
 	_ = os.Setenv("RATE_LIMIT", "120")           // 120 requests per minute
-	_ = os.Setenv("IP_RATE_LIMIT", "60")         // 60 requests per minute per IP
 
 	// Load configuration from environment
 	cfg, err := LoadFromEnv()
@@ -82,9 +80,6 @@ func TestLoadFromEnv(t *testing.T) {
 	if cfg.Security.RateLimit != 120 {
 		t.Errorf("RateLimit = %d, want %d", cfg.Security.RateLimit, 120)
 	}
-	if cfg.Security.IPRateLimit != 60 {
-		t.Errorf("IPRateLimit = %d, want %d", cfg.Security.IPRateLimit, 60)
-	}
 }
 
 func TestLoadFromFile(t *testing.T) {
@@ -111,8 +106,7 @@ func TestLoadFromFile(t *testing.T) {
 			"request_timeout": "60s"
 		},
 		"security": {
-			"rate_limit": 100,
-			"ip_rate_limit": 50
+			"rate_limit": 100
 		}
 	}`
 	jsonPath := filepath.Join(tmpDir, "config.json")
@@ -133,7 +127,6 @@ server:
   request_timeout: "20s"
 security:
   rate_limit: 80
-  ip_rate_limit: 40
 `
 	yamlPath := filepath.Join(tmpDir, "config.yaml")
 	if err := os.WriteFile(yamlPath, []byte(yamlConfig), 0o644); err != nil {
@@ -243,8 +236,7 @@ func TestValidateConfig(t *testing.T) {
 					RequestTimeout: 30 * time.Second,
 				},
 				Security: SecurityConfig{
-					RateLimit:   60,
-					IPRateLimit: 30,
+					RateLimit: 60,
 				},
 			},
 			wantError: false,
@@ -301,8 +293,7 @@ func TestValidateConfig(t *testing.T) {
 					RequestTimeout: 30 * time.Second,
 				},
 				Security: SecurityConfig{
-					RateLimit:   60,
-					IPRateLimit: 30,
+					RateLimit: 60,
 				},
 			},
 			wantError: false,
@@ -325,8 +316,7 @@ func TestValidateConfig(t *testing.T) {
 					RequestTimeout: 30 * time.Second,
 				},
 				Security: SecurityConfig{
-					RateLimit:   60,
-					IPRateLimit: 30,
+					RateLimit: 60,
 				},
 			},
 			wantError: false,

@@ -51,39 +51,24 @@ func main() {
 	// Initialize health checker
 	healthCheck := webhook.NewHealthCheck()
 
-	// Initialize telemetry if enabled
+	// Initialize telemetry if ENABLE_TRACING=true
 	var telemetryProvider *telemetry.Provider
-	if cfg.GCP.EnableTracing {
-		// Use environment variables for OTLP configuration (Honeycomb, Jaeger, etc.)
+	if os.Getenv("ENABLE_TRACING") == "true" {
 		telemetryConfig := telemetry.ConfigFromEnv()
-
-		// Set defaults only if environment variables not provided
 		if telemetryConfig.ServiceName == "" {
 			telemetryConfig.ServiceName = "buildkite-webhook"
-		}
-		// Only use config file endpoint if no environment endpoint is set
-		if telemetryConfig.OTLPEndpoint == "" && os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" {
-			telemetryConfig.OTLPEndpoint = cfg.GCP.OTLPEndpoint
-		}
-
-		telemetryConfig.ServiceVersion = "v1.0.0"
-		if env := os.Getenv("OTEL_ENVIRONMENT"); env != "" {
-			telemetryConfig.Environment = env
-		} else {
-			telemetryConfig.Environment = "development"
 		}
 
 		telemetryProvider, err = telemetry.NewProvider(telemetryConfig)
 		if err != nil {
-			logger.Warn("Failed to create telemetry provider, continuing without tracing", "error", err)
+			logger.Warn("Failed to create telemetry provider", "error", err)
 		} else {
-			// Try to start telemetry with timeout
 			startCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			if err := telemetryProvider.Start(startCtx); err != nil {
-				logger.Warn("Failed to start telemetry, continuing without tracing", "error", err)
+				logger.Warn("Failed to start telemetry", "error", err)
 				telemetryProvider = nil
 			} else {
-				logger.Info("Distributed tracing enabled", "endpoint", telemetryConfig.OTLPEndpoint)
+				logger.Info("Tracing enabled", "endpoint", telemetryConfig.OTLPEndpoint)
 			}
 			cancel()
 		}
@@ -146,35 +131,18 @@ func main() {
 	mux.HandleFunc("/health", healthCheck.HealthHandler)
 	mux.HandleFunc("/ready", healthCheck.ReadyHandler)
 
-	// Create security configuration
-	securityConfig := security.SecurityConfig{
-		AllowedOrigins: cfg.Security.AllowedOrigins,
-		AllowedMethods: cfg.Security.AllowedMethods,
-		AllowedHeaders: cfg.Security.AllowedHeaders,
-		MaxAge:         3600,
-	}
-
-	// Create rate limiters
-	globalRateLimiter := security.NewGlobalRateLimiter(cfg.Security.RateLimit)
-	ipRateLimiter := security.NewIPRateLimiter(cfg.Security.IPRateLimit)
-
 	// Add webhook route with middleware
-	// Note: The order of middleware is important!
 	var middlewares []func(http.Handler) http.Handler
 
-	// Add tracing middleware first if enabled
 	if telemetryProvider != nil {
 		middlewares = append(middlewares, telemetryProvider.TracingMiddleware)
 	}
 
-	// Standard middleware chain
 	middlewares = append(middlewares,
-		request.WithRequestID,                           // Generate request ID
-		loggingMiddleware.WithStructuredLogging(logger), // Structured logging
-		security.WithSecurityHeaders(securityConfig),
-		security.WithRateLimiter(globalRateLimiter),    // Global rate limiting
-		security.WithRateLimiter(ipRateLimiter),        // IP-based rate limiting
-		request.WithTimeout(cfg.Server.RequestTimeout), // Timeout last
+		request.WithRequestID,
+		loggingMiddleware.WithStructuredLogging(logger),
+		security.WithRateLimit(cfg.Security.RateLimit),
+		request.WithTimeout(cfg.Server.RequestTimeout),
 	)
 
 	mux.Handle(cfg.Webhook.Path, chainMiddleware(webhookHandler, middlewares...))
