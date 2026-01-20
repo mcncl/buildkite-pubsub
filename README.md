@@ -18,25 +18,34 @@ This service connects Buildkite's webhook system to Google Cloud Pub/Sub, allowi
 
 ## Prerequisites
 
-- [Go 1.21+](https://golang.org/dl/) for development
-- [Docker](https://docs.docker.com/get-docker/) for container builds
-- [kubectl](https://kubernetes.io/docs/tasks/tools/) for deployment
-- [Orbstack](https://orbstack.dev/) for local Kubernetes
-- [ngrok](https://ngrok.com/) for local webhook testing
 - [Google Cloud Project](https://cloud.google.com/) with Pub/Sub enabled
-- Buildkite organization admin access for webhook configuration
+- [Buildkite](https://buildkite.com/) organization with webhook configuration access
 
-## Local Development
+## Quick Start
 
 ```bash
-# Run locally
+# Build and run with Docker
+docker build -t buildkite-webhook .
+docker run -p 8080:8080 \
+  -e PROJECT_ID=your-project \
+  -e TOPIC_ID=buildkite-events \
+  -e BUILDKITE_WEBHOOK_TOKEN=your-token \
+  buildkite-webhook
+```
+
+Configure your Buildkite webhook to point to your deployed service URL.
+
+## Development
+
+```bash
+# Run locally (requires Go 1.24+)
 go run cmd/webhook/main.go
 
 # Run tests
 go test ./...
 
-# Build container
-docker build -t buildkite-webhook .
+# Run tests with Docker
+docker compose --profile ci up test
 ```
 
 ## Contributing
