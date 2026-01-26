@@ -35,20 +35,6 @@ func TestInitMetrics(t *testing.T) {
 	}
 }
 
-func TestRecordPubsubRetry(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	if err := InitMetrics(reg); err != nil {
-		t.Fatalf("failed to initialize metrics: %v", err)
-	}
-
-	RecordPubsubRetry("build.started")
-
-	value := getCounterValue(t, PubsubRetries.WithLabelValues("build.started"))
-	if value != 1 {
-		t.Errorf("expected PubsubRetries to be 1, got %v", value)
-	}
-}
-
 func TestRecordDLQMessage(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	if err := InitMetrics(reg); err != nil {

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/mcncl/buildkite-pubsub/internal/buildkite"
@@ -193,8 +192,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"branch":      transformed.Build.Branch,
 	}
 
-	// Publish with retry logic (max 3 retries by default)
-	msgID, err := h.publishWithRetry(ctx, transformed, pubsubAttributes, 3)
+	// Publish to Pub/Sub (SDK handles retries internally)
+	msgID, err := h.publisher.Publish(ctx, transformed, pubsubAttributes)
 
 	pubDuration := time.Since(pubStart).Seconds()
 	metrics.PubsubPublishDuration.Observe(pubDuration)
@@ -203,19 +202,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		publishSpan.RecordError(err)
 		publishSpan.SetStatus(codes.Error, "publish failed")
 
-		// Classify and handle the publish error
-		var publishErr error
-		if errors.IsConnectionError(err) {
-			publishErr = errors.NewConnectionError("failed to connect to Pub/Sub")
-			metrics.PubsubPublishRequestsTotal.WithLabelValues("error", eventType).Inc()
-		} else if errors.IsRateLimitError(err) {
-			publishErr = err // Already a rate limit error
-			metrics.PubsubPublishRequestsTotal.WithLabelValues("rate_limit", eventType).Inc()
-		} else {
-			publishErr = errors.NewPublishError("failed to publish message", err)
-			metrics.PubsubPublishRequestsTotal.WithLabelValues("error", eventType).Inc()
-		}
+		// Send to DLQ if enabled
+		h.sendToDLQ(ctx, transformed, pubsubAttributes, err)
 
+		// Classify and handle the publish error
+		publishErr := errors.NewPublishError("failed to publish message", err)
+		metrics.PubsubPublishRequestsTotal.WithLabelValues("error", eventType).Inc()
 		metrics.ErrorsTotal.WithLabelValues("publish_error").Inc()
 		h.handleError(w, r, publishErr, eventType)
 		return
@@ -316,88 +308,9 @@ func (h *Handler) sendJSONResponse(w http.ResponseWriter, statusCode int, data i
 	}
 }
 
-// publishWithRetry attempts to publish a message to Pub/Sub with exponential backoff retry logic.
-// It will retry on retryable errors (connection, publish, rate limit) up to maxRetries times.
-// Non-retryable errors (auth, validation) fail immediately without retry.
-// If all retries are exhausted and DLQ is enabled, the message is sent to the Dead Letter Queue.
-func (h *Handler) publishWithRetry(ctx context.Context, data interface{}, attributes map[string]string, maxRetries int) (string, error) {
-	// Define exponential backoff durations
-	backoffDurations := []time.Duration{
-		100 * time.Millisecond,
-		500 * time.Millisecond,
-		1 * time.Second,
-		2 * time.Second,
-		5 * time.Second,
-		10 * time.Second,
-	}
-
-	var lastErr error
-	eventType := attributes["event_type"]
-	retryCount := 0
-
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		// Check context cancellation before attempting
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		default:
-		}
-
-		// Attempt to publish
-		msgID, err := h.publisher.Publish(ctx, data, attributes)
-		if err == nil {
-			// Success!
-			return msgID, nil
-		}
-
-		// Store the error
-		lastErr = err
-
-		// Check if error is retryable
-		if !errors.IsRetryable(err) {
-			// Non-retryable error (auth, validation, etc.) - fail immediately
-			return "", err
-		}
-
-		// If we've exhausted retries, try DLQ then return error
-		if attempt >= maxRetries {
-			// Send to Dead Letter Queue if enabled
-			h.sendToDLQ(ctx, data, attributes, lastErr, retryCount)
-			return "", lastErr
-		}
-
-		retryCount++
-
-		// Record retry metric
-		if eventType != "" {
-			metrics.RecordPubsubRetry(eventType)
-		}
-
-		// Calculate backoff duration for this attempt
-		var backoffDuration time.Duration
-		if attempt < len(backoffDurations) {
-			backoffDuration = backoffDurations[attempt]
-		} else {
-			// If we've exceeded our predefined backoff durations, use the maximum
-			backoffDuration = backoffDurations[len(backoffDurations)-1]
-		}
-
-		// Wait with backoff, respecting context cancellation
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-time.After(backoffDuration):
-			// Continue to next retry attempt
-		}
-	}
-
-	// Should never reach here, but return last error just in case
-	return "", lastErr
-}
-
 // sendToDLQ sends a failed message to the Dead Letter Queue.
 // This is a best-effort operation - errors are logged but don't affect the main flow.
-func (h *Handler) sendToDLQ(ctx context.Context, data interface{}, originalAttrs map[string]string, failureErr error, retryCount int) {
+func (h *Handler) sendToDLQ(ctx context.Context, data interface{}, originalAttrs map[string]string, failureErr error) {
 	// Skip if DLQ is not enabled or publisher is not configured
 	if !h.enableDLQ || h.dlqPublisher == nil {
 		return
@@ -414,7 +327,6 @@ func (h *Handler) sendToDLQ(ctx context.Context, data interface{}, originalAttrs
 
 	// Add DLQ-specific attributes
 	dlqAttributes["dlq_reason"] = failureReason
-	dlqAttributes["dlq_retry_count"] = strconv.Itoa(retryCount)
 	dlqAttributes["dlq_original_timestamp"] = time.Now().UTC().Format(time.RFC3339)
 	dlqAttributes["dlq_error_message"] = errors.Format(failureErr)
 
@@ -423,7 +335,6 @@ func (h *Handler) sendToDLQ(ctx context.Context, data interface{}, originalAttrs
 		"original_payload": data,
 		"dlq_metadata": map[string]interface{}{
 			"failure_reason":      failureReason,
-			"retry_count":         retryCount,
 			"error_message":       errors.Format(failureErr),
 			"timestamp":           time.Now().UTC(),
 			"original_event_type": eventType,

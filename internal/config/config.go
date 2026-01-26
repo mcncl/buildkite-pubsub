@@ -25,17 +25,13 @@ type Config struct {
 
 // GCPConfig holds Google Cloud Platform related configuration
 type GCPConfig struct {
-	ProjectID              string  `json:"project_id" yaml:"project_id"`
-	TopicID                string  `json:"topic_id" yaml:"topic_id"`
-	CredentialsFile        string  `json:"credentials_file" yaml:"credentials_file"`
-	EnableTracing          bool    `json:"enable_tracing" yaml:"enable_tracing"`
-	OTLPEndpoint           string  `json:"otlp_endpoint" yaml:"otlp_endpoint"`
-	TraceSamplingRatio     float64 `json:"trace_sampling_ratio" yaml:"trace_sampling_ratio"`
-	PubSubBatchSize        int     `json:"pubsub_batch_size" yaml:"pubsub_batch_size"`
-	PubSubRetryMaxAttempts int     `json:"pubsub_retry_max_attempts" yaml:"pubsub_retry_max_attempts"`
-	// Dead Letter Queue configuration
-	EnableDLQ  bool   `json:"enable_dlq" yaml:"enable_dlq"`
-	DLQTopicID string `json:"dlq_topic_id" yaml:"dlq_topic_id"`
+	ProjectID              string `json:"project_id" yaml:"project_id"`
+	TopicID                string `json:"topic_id" yaml:"topic_id"`
+	CredentialsFile        string `json:"credentials_file" yaml:"credentials_file"`
+	PubSubBatchSize        int    `json:"pubsub_batch_size" yaml:"pubsub_batch_size"`
+	PubSubRetryMaxAttempts int    `json:"pubsub_retry_max_attempts" yaml:"pubsub_retry_max_attempts"`
+	EnableDLQ              bool   `json:"enable_dlq" yaml:"enable_dlq"`
+	DLQTopicID             string `json:"dlq_topic_id" yaml:"dlq_topic_id"`
 }
 
 // WebhookConfig holds Buildkite webhook related configuration
@@ -58,14 +54,7 @@ type ServerConfig struct {
 
 // SecurityConfig holds security related configuration
 type SecurityConfig struct {
-	RateLimit            int      `json:"rate_limit" yaml:"rate_limit"`
-	IPRateLimit          int      `json:"ip_rate_limit" yaml:"ip_rate_limit"`
-	AllowedOrigins       []string `json:"allowed_origins" yaml:"allowed_origins"`
-	AllowedMethods       []string `json:"allowed_methods" yaml:"allowed_methods"`
-	AllowedHeaders       []string `json:"allowed_headers" yaml:"allowed_headers"`
-	EnableCSRFProtection bool     `json:"enable_csrf_protection" yaml:"enable_csrf_protection"`
-	CSRFCookieName       string   `json:"csrf_cookie_name" yaml:"csrf_cookie_name"`
-	CSRFHeaderName       string   `json:"csrf_header_name" yaml:"csrf_header_name"`
+	RateLimit int `json:"rate_limit" yaml:"rate_limit"`
 }
 
 // DefaultConfig returns a configuration with sensible defaults
@@ -73,9 +62,6 @@ func DefaultConfig() *Config {
 	return &Config{
 		GCP: GCPConfig{
 			CredentialsFile:        "credentials.json",
-			EnableTracing:          true,
-			OTLPEndpoint:           "localhost:4317",
-			TraceSamplingRatio:     0.1,
 			PubSubBatchSize:        100,
 			PubSubRetryMaxAttempts: 5,
 		},
@@ -92,23 +78,7 @@ func DefaultConfig() *Config {
 			IdleTimeout:    120 * time.Second,
 		},
 		Security: SecurityConfig{
-			RateLimit:      60, // 60 requests per minute
-			IPRateLimit:    30, // 30 requests per minute per IP
-			AllowedOrigins: []string{"*"},
-			AllowedMethods: []string{"POST", "OPTIONS"},
-			AllowedHeaders: []string{
-				"Accept",
-				"Content-Type",
-				"Content-Length",
-				"Accept-Encoding",
-				"Authorization",
-				"X-CSRF-Token",
-				"X-Buildkite-Token",
-				"X-Request-ID",
-			},
-			EnableCSRFProtection: false,
-			CSRFCookieName:       "csrf_token",
-			CSRFHeaderName:       "X-CSRF-Token",
+			RateLimit: 60,
 		},
 	}
 }
@@ -153,9 +123,6 @@ func (c *Config) Validate() error {
 	if c.Security.RateLimit < 0 {
 		return errors.NewValidationError("Security.RateLimit cannot be negative")
 	}
-	if c.Security.IPRateLimit < 0 {
-		return errors.NewValidationError("Security.IPRateLimit cannot be negative")
-	}
 
 	return nil
 }
@@ -174,17 +141,6 @@ func LoadFromEnv() (*Config, error) {
 	if val := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); val != "" {
 		cfg.GCP.CredentialsFile = val
 	}
-	if val := os.Getenv("ENABLE_TRACING"); val != "" {
-		cfg.GCP.EnableTracing = strings.ToLower(val) == "true"
-	}
-	if val := os.Getenv("OTLP_ENDPOINT"); val != "" {
-		cfg.GCP.OTLPEndpoint = val
-	}
-	if val := os.Getenv("TRACE_SAMPLING_RATIO"); val != "" {
-		if ratio, err := strconv.ParseFloat(val, 64); err == nil && ratio >= 0 && ratio <= 1 {
-			cfg.GCP.TraceSamplingRatio = ratio
-		}
-	}
 	if val := os.Getenv("PUBSUB_BATCH_SIZE"); val != "" {
 		if size, err := strconv.Atoi(val); err == nil && size > 0 {
 			cfg.GCP.PubSubBatchSize = size
@@ -195,7 +151,6 @@ func LoadFromEnv() (*Config, error) {
 			cfg.GCP.PubSubRetryMaxAttempts = attempts
 		}
 	}
-	// Dead Letter Queue configuration
 	if val := os.Getenv("ENABLE_DLQ"); val != "" {
 		cfg.GCP.EnableDLQ = strings.ToLower(val) == "true" || val == "1"
 	}
@@ -255,36 +210,15 @@ func LoadFromEnv() (*Config, error) {
 			cfg.Security.RateLimit = limit
 		}
 	}
-	if val := os.Getenv("IP_RATE_LIMIT"); val != "" {
-		if limit, err := strconv.Atoi(val); err == nil && limit >= 0 {
-			cfg.Security.IPRateLimit = limit
-		}
-	}
-	if val := os.Getenv("ALLOWED_ORIGINS"); val != "" {
-		cfg.Security.AllowedOrigins = strings.Split(val, ",")
-	}
-	if val := os.Getenv("ALLOWED_METHODS"); val != "" {
-		cfg.Security.AllowedMethods = strings.Split(val, ",")
-	}
-	if val := os.Getenv("ALLOWED_HEADERS"); val != "" {
-		cfg.Security.AllowedHeaders = strings.Split(val, ",")
-	}
-	if val := os.Getenv("ENABLE_CSRF_PROTECTION"); val != "" {
-		cfg.Security.EnableCSRFProtection = strings.ToLower(val) == "true"
-	}
-	if val := os.Getenv("CSRF_COOKIE_NAME"); val != "" {
-		cfg.Security.CSRFCookieName = val
-	}
-	if val := os.Getenv("CSRF_HEADER_NAME"); val != "" {
-		cfg.Security.CSRFHeaderName = val
-	}
 
 	return cfg, nil
 }
 
 // LoadFromFile loads configuration from a JSON or YAML file
 func LoadFromFile(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	// Clean the path to prevent directory traversal attacks
+	cleanPath := filepath.Clean(path)
+	data, err := os.ReadFile(cleanPath)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read config file")
 	}
@@ -294,14 +228,13 @@ func LoadFromFile(path string) (*Config, error) {
 	// Create a temporary struct for parsing that uses string types for durations
 	type tempConfig struct {
 		GCP struct {
-			ProjectID              string  `json:"project_id" yaml:"project_id"`
-			TopicID                string  `json:"topic_id" yaml:"topic_id"`
-			CredentialsFile        string  `json:"credentials_file" yaml:"credentials_file"`
-			EnableTracing          bool    `json:"enable_tracing" yaml:"enable_tracing"`
-			OTLPEndpoint           string  `json:"otlp_endpoint" yaml:"otlp_endpoint"`
-			TraceSamplingRatio     float64 `json:"trace_sampling_ratio" yaml:"trace_sampling_ratio"`
-			PubSubBatchSize        int     `json:"pubsub_batch_size" yaml:"pubsub_batch_size"`
-			PubSubRetryMaxAttempts int     `json:"pubsub_retry_max_attempts" yaml:"pubsub_retry_max_attempts"`
+			ProjectID              string `json:"project_id" yaml:"project_id"`
+			TopicID                string `json:"topic_id" yaml:"topic_id"`
+			CredentialsFile        string `json:"credentials_file" yaml:"credentials_file"`
+			PubSubBatchSize        int    `json:"pubsub_batch_size" yaml:"pubsub_batch_size"`
+			PubSubRetryMaxAttempts int    `json:"pubsub_retry_max_attempts" yaml:"pubsub_retry_max_attempts"`
+			EnableDLQ              bool   `json:"enable_dlq" yaml:"enable_dlq"`
+			DLQTopicID             string `json:"dlq_topic_id" yaml:"dlq_topic_id"`
 		} `json:"gcp" yaml:"gcp"`
 		Webhook struct {
 			Token      string `json:"token" yaml:"token"`
@@ -318,14 +251,7 @@ func LoadFromFile(path string) (*Config, error) {
 			IdleTimeout    string `json:"idle_timeout" yaml:"idle_timeout"`
 		} `json:"server" yaml:"server"`
 		Security struct {
-			RateLimit            int      `json:"rate_limit" yaml:"rate_limit"`
-			IPRateLimit          int      `json:"ip_rate_limit" yaml:"ip_rate_limit"`
-			AllowedOrigins       []string `json:"allowed_origins" yaml:"allowed_origins"`
-			AllowedMethods       []string `json:"allowed_methods" yaml:"allowed_methods"`
-			AllowedHeaders       []string `json:"allowed_headers" yaml:"allowed_headers"`
-			EnableCSRFProtection bool     `json:"enable_csrf_protection" yaml:"enable_csrf_protection"`
-			CSRFCookieName       string   `json:"csrf_cookie_name" yaml:"csrf_cookie_name"`
-			CSRFHeaderName       string   `json:"csrf_header_name" yaml:"csrf_header_name"`
+			RateLimit int `json:"rate_limit" yaml:"rate_limit"`
 		} `json:"security" yaml:"security"`
 	}
 
@@ -359,11 +285,10 @@ func LoadFromFile(path string) (*Config, error) {
 	cfg.GCP.ProjectID = tempCfg.GCP.ProjectID
 	cfg.GCP.TopicID = tempCfg.GCP.TopicID
 	cfg.GCP.CredentialsFile = tempCfg.GCP.CredentialsFile
-	cfg.GCP.EnableTracing = tempCfg.GCP.EnableTracing
-	cfg.GCP.OTLPEndpoint = tempCfg.GCP.OTLPEndpoint
-	cfg.GCP.TraceSamplingRatio = tempCfg.GCP.TraceSamplingRatio
 	cfg.GCP.PubSubBatchSize = tempCfg.GCP.PubSubBatchSize
 	cfg.GCP.PubSubRetryMaxAttempts = tempCfg.GCP.PubSubRetryMaxAttempts
+	cfg.GCP.EnableDLQ = tempCfg.GCP.EnableDLQ
+	cfg.GCP.DLQTopicID = tempCfg.GCP.DLQTopicID
 
 	cfg.Webhook.Token = tempCfg.Webhook.Token
 	cfg.Webhook.HMACSecret = tempCfg.Webhook.HMACSecret
@@ -407,13 +332,6 @@ func LoadFromFile(path string) (*Config, error) {
 	}
 
 	cfg.Security.RateLimit = tempCfg.Security.RateLimit
-	cfg.Security.IPRateLimit = tempCfg.Security.IPRateLimit
-	cfg.Security.AllowedOrigins = tempCfg.Security.AllowedOrigins
-	cfg.Security.AllowedMethods = tempCfg.Security.AllowedMethods
-	cfg.Security.AllowedHeaders = tempCfg.Security.AllowedHeaders
-	cfg.Security.EnableCSRFProtection = tempCfg.Security.EnableCSRFProtection
-	cfg.Security.CSRFCookieName = tempCfg.Security.CSRFCookieName
-	cfg.Security.CSRFHeaderName = tempCfg.Security.CSRFHeaderName
 
 	return cfg, nil
 }
@@ -437,18 +355,17 @@ func MergeConfigs(base, override *Config) *Config {
 	if override.GCP.CredentialsFile != "" {
 		result.GCP.CredentialsFile = override.GCP.CredentialsFile
 	}
-	// We need to explicitly check booleans
-	if override.GCP.EnableTracing {
-		result.GCP.EnableTracing = true
-	}
-	if override.GCP.TraceSamplingRatio != 0 {
-		result.GCP.TraceSamplingRatio = override.GCP.TraceSamplingRatio
-	}
 	if override.GCP.PubSubBatchSize != 0 {
 		result.GCP.PubSubBatchSize = override.GCP.PubSubBatchSize
 	}
 	if override.GCP.PubSubRetryMaxAttempts != 0 {
 		result.GCP.PubSubRetryMaxAttempts = override.GCP.PubSubRetryMaxAttempts
+	}
+	if override.GCP.EnableDLQ {
+		result.GCP.EnableDLQ = true
+	}
+	if override.GCP.DLQTopicID != "" {
+		result.GCP.DLQTopicID = override.GCP.DLQTopicID
 	}
 
 	// Webhook config
@@ -488,27 +405,6 @@ func MergeConfigs(base, override *Config) *Config {
 	// Security config
 	if override.Security.RateLimit != 0 {
 		result.Security.RateLimit = override.Security.RateLimit
-	}
-	if override.Security.IPRateLimit != 0 {
-		result.Security.IPRateLimit = override.Security.IPRateLimit
-	}
-	if len(override.Security.AllowedOrigins) > 0 {
-		result.Security.AllowedOrigins = override.Security.AllowedOrigins
-	}
-	if len(override.Security.AllowedMethods) > 0 {
-		result.Security.AllowedMethods = override.Security.AllowedMethods
-	}
-	if len(override.Security.AllowedHeaders) > 0 {
-		result.Security.AllowedHeaders = override.Security.AllowedHeaders
-	}
-	if override.Security.EnableCSRFProtection {
-		result.Security.EnableCSRFProtection = true
-	}
-	if override.Security.CSRFCookieName != "" {
-		result.Security.CSRFCookieName = override.Security.CSRFCookieName
-	}
-	if override.Security.CSRFHeaderName != "" {
-		result.Security.CSRFHeaderName = override.Security.CSRFHeaderName
 	}
 
 	return &result
