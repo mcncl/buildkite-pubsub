@@ -115,15 +115,18 @@ gcloud iam service-accounts list | grep $SERVICE_ACCOUNT_NAME
 
 ## 6. Create Buildkite Webhook Secret
 
+The webhook uses HMAC signature verification for secure authentication. You'll need the signing secret from your Buildkite webhook configuration.
+
 ```bash
-# Store your Buildkite webhook token securely
-echo -n "YOUR_BUILDKITE_WEBHOOK_TOKEN" | \
-    gcloud secrets create buildkite-webhook-token \
+# Store your Buildkite webhook HMAC signing secret securely
+# Get this from: Buildkite → Settings → Notification Services → Webhooks → Signing Secret
+echo -n "YOUR_BUILDKITE_SIGNING_SECRET" | \
+    gcloud secrets create buildkite-webhook-hmac-secret \
     --replication-policy="automatic" \
     --data-file=-
 
 # Grant service account access to secret
-gcloud secrets add-iam-policy-binding buildkite-webhook-token \
+gcloud secrets add-iam-policy-binding buildkite-webhook-hmac-secret \
     --member="serviceAccount:${SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role="roles/secretmanager.secretAccessor"
 ```
@@ -140,8 +143,8 @@ PROJECT_ID=$PROJECT_ID
 TOPIC_ID=$TOPIC_ID
 GOOGLE_APPLICATION_CREDENTIALS=./credentials.json
 
-# Buildkite
-BUILDKITE_WEBHOOK_TOKEN=your-actual-token-here
+# Buildkite HMAC signing secret (from Buildkite webhook settings)
+BUILDKITE_WEBHOOK_HMAC_SECRET=your-signing-secret-here
 
 # Tracing (optional)
 ENABLE_TRACING=true
@@ -164,25 +167,20 @@ export $(grep -v '^#' .env | xargs)
 go run cmd/webhook/main.go
 
 # In another terminal, test with a sample webhook
-curl -X POST http://localhost:8888/webhook \
-  -H "Authorization: Bearer ${BUILDKITE_WEBHOOK_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "event": "ping",
-    "build": {"id": "test"},
-    "pipeline": {"name": "test"},
-    "sender": {"name": "test"}
-  }'
+# Note: HMAC validation requires computing a signature. For local testing,
+# you can either configure a real Buildkite webhook to point to your local
+# server (via ngrok/cloudflared), or temporarily set BUILDKITE_WEBHOOK_TOKEN
+# for simpler token-based auth during development.
 ```
 
 ## 9. Cloud Run Deployment (Optional)
 
 ```bash
 # Configure Docker for GCR
-gcloud auth configure-docker
+gcloud auth configure-docker gcr.io
 
-# Build and push container
-docker build -t gcr.io/$PROJECT_ID/buildkite-webhook .
+# Build and push container (--platform ensures correct architecture for Cloud Run)
+docker build --platform linux/amd64 -t gcr.io/$PROJECT_ID/buildkite-webhook .
 docker push gcr.io/$PROJECT_ID/buildkite-webhook
 
 # Deploy to Cloud Run
@@ -195,7 +193,7 @@ gcloud run deploy buildkite-webhook \
   --allow-unauthenticated \
   --service-account=${SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com \
   --set-env-vars="PROJECT_ID=$PROJECT_ID,TOPIC_ID=$TOPIC_ID,ENABLE_TRACING=true" \
-  --set-secrets="BUILDKITE_WEBHOOK_TOKEN=buildkite-webhook-token:latest"
+  --set-secrets="BUILDKITE_WEBHOOK_HMAC_SECRET=buildkite-webhook-hmac-secret:latest"
 
 # Optional: Enable Dead Letter Queue
 # Add these environment variables to capture failed messages:
@@ -232,21 +230,19 @@ See [Distributed Tracing Guide](DISTRIBUTED_TRACING.md) for detailed setup instr
 echo "Project: $PROJECT_ID"
 echo "Topic: $(gcloud pubsub topics list --filter=name:$TOPIC_ID --format='value(name)')"
 echo "Service Account: $(gcloud iam service-accounts list --filter=email:${SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com --format='value(email)')"
-echo "Secret: $(gcloud secrets list --filter=name:buildkite-webhook-token --format='value(name)')"
+echo "Secret: $(gcloud secrets list --filter=name:buildkite-webhook-hmac-secret --format='value(name)')"
 echo "Service URL: $(gcloud run services describe buildkite-webhook --region $REGION --format='value(status.url)')"
 ```
 
 ### Test Webhook
-```bash
-# Get the service URL
-WEBHOOK_URL=$(gcloud run services describe buildkite-webhook --region $REGION --format='value(status.url)')
 
-# Test with ping event
-curl -X POST ${WEBHOOK_URL}/webhook \
-  -H "X-Buildkite-Token: YOUR_WEBHOOK_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"event": "ping", "build": {"id": "test"}, "pipeline": {"name": "test"}, "sender": {"name": "test"}}'
-```
+Configure Buildkite to send webhooks to your service URL:
+
+1. Go to **Buildkite → Settings → Notification Services → Add → Webhook**
+2. Set the **Webhook URL** to: `${SERVICE_URL}/webhook`
+3. Copy the **Signing Secret** (this should match what you stored in GCP Secret Manager)
+4. Select the events you want to receive
+5. Save and test with the "Send Test" button
 
 ## Security Notes
 
@@ -254,6 +250,7 @@ curl -X POST ${WEBHOOK_URL}/webhook \
 - Add `credentials.json` to your `.gitignore`
 - Rotate service account keys periodically
 - Use minimal required permissions
+- HMAC signature verification protects against replay attacks (5-minute window)
 
 ## Cleanup
 
