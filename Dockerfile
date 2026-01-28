@@ -1,5 +1,5 @@
 # Development stage - includes linting and testing tools
-FROM golang:1.25-alpine@sha256:d9b2e14101f27ec8d09674cd01186798d227bb0daec90e032aeb1cd22ac0f029 AS dev
+FROM golang:1.25-alpine@sha256:660f0b83cf50091e3777e4730ccc0e63e83fea2c420c872af5c60cb357dcafb2 AS dev
 
 RUN apk add --no-cache git gcc musl-dev
 
@@ -18,7 +18,7 @@ COPY . .
 CMD ["go", "test", "-v", "./..."]
 
 # Build stage
-FROM golang:1.25-alpine@sha256:d9b2e14101f27ec8d09674cd01186798d227bb0daec90e032aeb1cd22ac0f029 AS builder
+FROM golang:1.25-alpine@sha256:660f0b83cf50091e3777e4730ccc0e63e83fea2c420c872af5c60cb357dcafb2 AS builder
 
 WORKDIR /app
 
