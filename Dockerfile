@@ -30,7 +30,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o webhook cmd/webhook/main.go
 
 # Production stage
-FROM alpine:3.23@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659 AS production
+FROM alpine:3.23@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40 AS production
 
 WORKDIR /app
 
