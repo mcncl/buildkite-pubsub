@@ -2,27 +2,27 @@ steps:
   - label: "🔍 Lint & Format"
     key: "lint"
     plugins:
-      - docker-compose#v5.12.1:
+      - docker-compose#v5.14.0:
           run: lint
           config: compose.yaml
-      - docker-compose#v5.12.1:
+      - docker-compose#v5.14.0:
           run: fmt
           config: compose.yaml
 
   - label: "🧪 Test"
     key: "test"
     plugins:
-      - docker-compose#v5.12.1:
+      - docker-compose#v5.14.0:
           run: test
           config: compose.yaml
 
   - label: "🔒 Security Scan"
     key: "security"
     plugins:
-      - docker-compose#v5.12.1:
+      - docker-compose#v5.14.0:
           run: gosec
           config: compose.yaml
-      - docker-compose#v5.12.1:
+      - docker-compose#v5.14.0:
           run: govulncheck
           config: compose.yaml
     artifact_paths:
